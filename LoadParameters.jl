@@ -85,14 +85,16 @@ function LoadDefaultParameters(filesuffix)
     ## River Reactor Operating Parameters
     input_volumetric_flow_rate = 5000     # m^3/hour
     input_max_flow_velocity = 2.0 * input_volumetric_flow_rate / reactor_width / reactor_initial_liquid_level   # m/hour
-    input_average_flow_velocity = input_max_flow_velocity / 2.0 #m/hr
+    input_average_flow_velocity = ((density_water(20)*acceleration_gravity*tan(reactor_incline)*reactor_initial_liquid_level^2)/(3*dynamic_viscosity_water(20)))*3600 #m/hr
     change_potential_energy = -2*sin(reactor_incline)*(reactor_length/num_odes_y)*acceleration_gravity*(3600^2) #in m2/hr2
-    average_flow_velocity(x) = sqrt((input_average_flow_velocity)^2+(change_potential_energy*x)) #average_flow_velocity constant despite height change
-    @show average_flow_velocity(0)
-    max_flow_velocity(x) = 2.0*average_flow_velocity(x) #same despite height change
-    initial_height_profile(x) = (input_average_flow_velocity*reactor_initial_liquid_level)/average_flow_velocity(x)
-    velocity_profile(x,z,H) = max_flow_velocity(x)*(1-(z/H)) #z = dz(x)*z
-    @show initial_height_profile(0)
+    initial_average_flow_velocity(x) = sqrt((input_average_flow_velocity)^2+(change_potential_energy*x)) #average_flow_velocity constant despite height change
+    @show initial_average_flow_velocity(0)
+    initial_height_profile(x) = (input_average_flow_velocity*reactor_initial_liquid_level)/initial_average_flow_velocity(x)
+    ## not initial
+    velocity_profile(z, H, T) = (density_water(T)*acceleration_gravity*tan(reactor_incline)*z*(2*H-z))/(2*dynamic_viscosity_water(T))*3600 #z = dz(i)*j
+    average_flow_velocity(H, T) = ((density_water(T)*acceleration_gravity*tan(reactor_incline)*H^2)/(3*dynamic_viscosity_water(T)))*3600
+    
+    
       
     input_hydraulic_diameter = 4 * (reactor_width * reactor_initial_liquid_level) / (reactor_width + 2 * reactor_initial_liquid_level) # meters
     input_temperature = 293.15                          # Kelvin
@@ -164,10 +166,10 @@ function LoadDefaultParameters(filesuffix)
                 input_max_flow_velocity,
                 input_average_flow_velocity,
                 change_potential_energy,
-                average_flow_velocity,
-                max_flow_velocity,
+                initial_average_flow_velocity,
                 initial_height_profile,
                 velocity_profile,
+                average_flow_velocity,
                 input_hydraulic_diameter,
                 input_reynolds_number,
                 input_temperature,

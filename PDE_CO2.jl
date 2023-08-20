@@ -18,7 +18,7 @@ function PDE_CO2!(dX, C, Height, M_biomass, Temperature, params, t)
     co2_per_biomass = params.co2_per_biomass
     Q = params.input_volumetric_flow_rate
     Vmax = params.input_max_flow_velocity
-    V_prof = params.velocity_profile
+    V_profile(z,H) = params.velocity_profile(z,H,Tamb)
     Pt_eng = params.change_potential_energy
     L = params.reactor_length
     W = params.reactor_width
@@ -48,7 +48,6 @@ function PDE_CO2!(dX, C, Height, M_biomass, Temperature, params, t)
     
 
     mu(Mz, z, dz_y, C_co2) = mu_model(Mz, GHI, z, dz_y, C_co2) # biomass specific growth rate, 1 / hour
-    V_profile(x,z,H) = V_prof(x,z,H)
 
     R_co2(Mz, z, dz_y, C_co2) = co2_per_biomass * mu(Mz, z, dz_y, C_co2) * Mz[z]/(dz_y*dy*W)    # CO2 per biomass x biomass production rate [kg CO2 / kg biomass  x  kg biomass/hour = kg CO2 / hour]
     Vol(dz_y) = dy*dz_y*W
@@ -73,14 +72,14 @@ function PDE_CO2!(dX, C, Height, M_biomass, Temperature, params, t)
 
         dCO2[pos2idx(i,Nz)] =  ( + Vol(dz[pos2idx(i,Nz)])*D_co2(Temperature[pos2idx(i,Nz)]) * (C[pos2idx(i-1,Nz)]/Vol(dz[pos2idx(i-1,Nz)]) + C[pos2idx(i+1,Nz)]/Vol(dz[pos2idx(i+1,Nz)]) - 2*C[pos2idx(i,Nz)]/Vol(dz[pos2idx(i,Nz)])) / dy^2 #small     #diffusion CO2 in y-direction
                                  + D_co2(Temperature[pos2idx(i,Nz)]) * (C[pos2idx(i,Nz-1)] + C[pos2idx(i,Nz)] - 2*C[pos2idx(i,Nz)]) / dz[pos2idx(i,Nz)]^2              #diffusion CO2 in z-direction
-                                 - Vol(dz[pos2idx(i,Nz)])*V_profile(i,Nz*dz[pos2idx(i,Nz)], Height[pos2idx(i,Nz)]) * (C[pos2idx(i,Nz)]/Vol(dz[pos2idx(i,Nz)]) - C[pos2idx(i-1,Nz)]/Vol(dz[pos2idx(i-1,Nz)])) / dy                                         #convection of CO2 at bottom (zero)
+                                 - Vol(dz[pos2idx(i,Nz)])*V_profile(dz[pos2idx(i,Nz)]*Nz, Height[pos2idx(i,Nz)]) * (C[pos2idx(i,Nz)]/Vol(dz[pos2idx(i,Nz)]) - C[pos2idx(i-1,Nz)]/Vol(dz[pos2idx(i-1,Nz)])) / dy                                         #convection of CO2 at bottom (zero)
                                  - Vol(dz[pos2idx(i,Nz)])*R_co2(M_biomass[pos2idx(i,0:Nz)], Nz, dz[pos2idx(i,Nz)], C[pos2idx(i,Nz)])                                                    #consumption of CO2 by biomass growth
                                )
     end
 
     dCO2[pos2idx(Ny,Nz)] =     ( + Vol(dz[pos2idx(Ny,Nz)])*D_co2(Temperature[pos2idx(Ny,Nz)]) * (C[pos2idx(Ny-1,Nz)]/Vol(dz[pos2idx(Ny-1,Nz)]) + C[pos2idx(Ny,Nz)]/Vol(dz[pos2idx(Ny,Nz)]) - 2*C[pos2idx(Ny,Nz)]/Vol(dz[pos2idx(Ny,Nz)])) / dy^2 #small       #diffusion CO2 in y-direction
                                  + D_co2(Temperature[pos2idx(Ny,Nz)]) * (C[pos2idx(Ny,Nz-1)] + C[pos2idx(Ny,Nz)] - 2*C[pos2idx(Ny,Nz)]) / dz[pos2idx(Ny,Nz)]^2              #diffusion CO2 in z-direction
-                                 - Vol(dz[pos2idx(Ny,Nz)])*V_profile(Ny,Nz*dz[pos2idx(Ny,Nz)],Height[pos2idx(Ny,Nz)]) * (C[pos2idx(Ny,Nz)]/Vol(dz[pos2idx(Ny,Nz)]) - C[pos2idx(Ny-1,Nz)]/Vol(dz[pos2idx(Ny-1,Nz)])) / dy                                         #convection of CO2 at bottom (zero)
+                                 - Vol(dz[pos2idx(Ny,Nz)])*V_profile(dz[pos2idx(Ny,Nz)]*Nz, Height[pos2idx(Ny,Nz)]) * (C[pos2idx(Ny,Nz)]/Vol(dz[pos2idx(Ny,Nz)]) - C[pos2idx(Ny-1,Nz)]/Vol(dz[pos2idx(Ny-1,Nz)])) / dy                                         #convection of CO2 at bottom (zero)
                                  - Vol(dz[pos2idx(Ny,Nz)])*R_co2(M_biomass[pos2idx(Ny,0:Nz)], Nz, dz[pos2idx(Ny,Nz)], C[pos2idx(Ny,Nz)])                                                    #consumption of CO2 by biomass growth
                                )
 
@@ -88,7 +87,7 @@ function PDE_CO2!(dX, C, Height, M_biomass, Temperature, params, t)
         for j=1:Nz-1
             dCO2[pos2idx(i,j)]=  ( + Vol(dz[pos2idx(i,j)])*D_co2(Temperature[pos2idx(i,j)]) * (C[pos2idx(i-1,j)]/Vol(dz[pos2idx(i-1,j)]) + C[pos2idx(i+1,j)]/Vol(dz[pos2idx(i+1,j)]) - 2*C[pos2idx(i,j)]/Vol(dz[pos2idx(i,j)])) / dy^2             #diffusion CO2 in y-direction
                                    + D_co2(Temperature[pos2idx(i,j)]) * (C[pos2idx(i,j-1)] + C[pos2idx(i,j+1)] - 2*C[pos2idx(i,j)]) / dz[pos2idx(i,j)]^2             #diffusion CO2 in z-direction
-                                   - Vol(dz[pos2idx(i,j)])*V_profile(i,j*dz[pos2idx(i,j)], Height[pos2idx(i,j)]) * (C[pos2idx(i,j)]/Vol(dz[pos2idx(i,j)]) - C[pos2idx(i-1,j)]/Vol(dz[pos2idx(i-1,j)])) / dy                           #convection of CO2 in y-direction
+                                   - Vol(dz[pos2idx(i,j)])*V_profile(dz[pos2idx(i,j)]*j, Height[pos2idx(i,j)]) * (C[pos2idx(i,j)]/Vol(dz[pos2idx(i,j)]) - C[pos2idx(i-1,j)]/Vol(dz[pos2idx(i-1,j)])) / dy                           #convection of CO2 in y-direction
                                    - Vol(dz[pos2idx(i,j)])*R_co2(M_biomass[pos2idx(i,0:Nz)], j, dz[pos2idx(i,j)], C[pos2idx(i,j)])                                                   #consumption of CO2 by biomass growth
                                  )
         end

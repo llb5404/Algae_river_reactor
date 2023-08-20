@@ -41,12 +41,12 @@ reactor_incline, 2.0e-8
 reactor_depth, 4.0e-6
 input_volumetric_flow_rate, 5000
 input_max_flow_velocity, 250.0
-input_average_flow_velocity, 125.0
+input_average_flow_velocity, 938.4304294528476
 change_potential_energy, -20.342016
-average_flow_velocity, average_flow_velocity
-max_flow_velocity, max_flow_velocity
+initial_average_flow_velocity, initial_average_flow_velocity
 initial_height_profile, initial_height_profile
 velocity_profile, velocity_profile
+average_flow_velocity, average_flow_velocity
 input_hydraulic_diameter, 6.666666666666667
 input_reynolds_number, input_reynolds_number
 input_temperature, 293.15

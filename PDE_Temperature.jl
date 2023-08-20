@@ -43,8 +43,7 @@ function HeatTransfer!(dX, T, Height, params, t)
     L = params.reactor_length                   # m
     W = params.reactor_width                    # m
     #H = params.reactor_initial_liquid_level     # m
-    Vmax = params.input_max_flow_velocity       # m/hour
-    V_prof = params.velocity_profile
+    V_profile(z,H) = params.velocity_profile(z,H,Tamb)
     Pt_eng = params.change_potential_energy
     P_atm = params.reference_pressure
     Ny = params.num_odes_y
@@ -134,7 +133,6 @@ function HeatTransfer!(dX, T, Height, params, t)
     Q_sum1(Temp) = Q_Longwave_Atmo + Q_Rerad(Temp) + Q_Conv(Temp) + Q_Evap(Temp) + Q_Solar
     Q_sum2(Temp) = Q_Ground(Temp)
    
-    V_profile(x,z,H) = V_prof(x,z,H)
     #BC1: T(y,z) at z = 0 is constant [Tin]
     #BC2: dT(y,z) at z = 0 includes the d2T/dy2, Vy*dT/dy, and Q terms (Qsol, Qrerad, Qlw, Qcov, Qevap)
     #BC3: dT(y,z) at z = H includes the d2T/dy2, Vy*dT/dy, and Q terms (Qground)
@@ -154,14 +152,14 @@ function HeatTransfer!(dX, T, Height, params, t)
         dT[pos2idx(i, 0)] = (  k_water*(T[pos2idx(i-1, 0)] - 2*T[pos2idx(i, 0)] + T[pos2idx(min(Ny,i+1), 0)]) / dy^2    #conduction in y-dir
                              + k_water*(T[pos2idx(i, 0)] + T[pos2idx(i,0+1)] - 2*T[pos2idx(i, 0)]) / dz[pos2idx(i,0)]^2               #conduction in z-dir at boundary
                              + Q_sum1(T[pos2idx(i,0)]) * dy * W                                                         #heat generation at boundary
-                             - V_profile(i,0,Height[pos2idx(i,0)]) * ( T[pos2idx(i,0)] - T[pos2idx(i-1,0)]) / dy                                       #heat convection at boundary
+                             - V_profile(0, Height[pos2idx(i,0)]) * ( T[pos2idx(i,0)] - T[pos2idx(i-1,0)]) / dy                                       #heat convection at boundary
                              ) / (rho_water * cp_water)
 
         # BC 3
         dT[pos2idx(i, Nz)] = (  k_water*(T[pos2idx(i-1, Nz)] - 2*T[pos2idx(i, Nz)] + T[pos2idx(min(Ny,i+1), Nz)]) / dy^2 #conduction in y-dir
                               + k_water*(T[pos2idx(i, Nz-1)] + T[pos2idx(i,Nz)] - 2*T[pos2idx(i, Nz)]) / dz[pos2idx(i,Nz)]^2            #conduction in z-dir at boundary
                               + Q_sum2(T[pos2idx(i,Nz)]) * dy * W                                                        #heat generation at boundary
-                              - V_profile(i,Nz*dz[pos2idx(i,Nz)],Height[pos2idx(i,Nz)]) * ( T[pos2idx(i,Nz)] - T[pos2idx(i-1,Nz)]) / dy                                        #heat convection at boundary
+                              - V_profile(dz[pos2idx(i,Nz)]*Nz, Height[pos2idx(i,Nz)]) * ( T[pos2idx(i,Nz)] - T[pos2idx(i-1,Nz)]) / dy                                        #heat convection at boundary
                              ) / (rho_water*cp_water)
     end
 
@@ -171,7 +169,7 @@ function HeatTransfer!(dX, T, Height, params, t)
 
         dT[pos2idx(Ny, j)] = (  k_water * (T[pos2idx(Ny, max(0,j-1))] - 2*T[pos2idx(Ny,j)] + T[pos2idx(Ny, min(Nz,j+1))]) / dz[pos2idx(Ny,j)]^2    #conduction in z-dir
                               + k_water * (T[pos2idx(Ny-1, j)] - 2*T[pos2idx(Ny,j)] + T[pos2idx(Ny,j)]) / dy^2                      #conduction in y-dir at boundary
-                              - V_profile(Ny,min(j, Nz-1)*dz[pos2idx(Ny,j)],Height[pos2idx(Ny,j)]) * (T[pos2idx(Ny,j)] - T[pos2idx(Ny-1,j)]) / dy                                      #heat convection at boundary
+                              - V_profile(dz[pos2idx(Ny,j)]*j, Height[pos2idx(Ny,j)]) * (T[pos2idx(Ny,j)] - T[pos2idx(Ny-1,j)]) / dy                                      #heat convection at boundary
                              ) / (rho_water*cp_water)
     end
 
@@ -179,7 +177,7 @@ function HeatTransfer!(dX, T, Height, params, t)
         for j=1:Nz-1
             dT[pos2idx(i,j)] = (   k_water * (T[pos2idx(i-1, j)] - 2*T[pos2idx(i, j)] + T[pos2idx(i+1, j)]) / dy^2      #conduction in y-dir
                                  + k_water * (T[pos2idx(i, j-1)] - 2*T[pos2idx(i, j)] + T[pos2idx(i, j+1)]) / dz[pos2idx(i,j)]^2      #conduction in z-dir
-                                 - V_profile(i,j*dz[pos2idx(i,j)],Height[pos2idx(i,j)]) * (T[pos2idx(i,j)] - T[pos2idx(i-1,j)]) / dy                         #heat convection
+                                 - V_profile(dz[pos2idx(i,j)]*j, Height[pos2idx(i,j)]) * (T[pos2idx(i,j)] - T[pos2idx(i-1,j)]) / dy                         #heat convection
                                ) / (rho_water*cp_water)
         end
     end
