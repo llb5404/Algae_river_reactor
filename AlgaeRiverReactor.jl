@@ -37,7 +37,7 @@ module AlgaeRiverReactor
     
         # more ....
 
-        PDE_AlgaeBiomass!(dX, M_biomass, Height, params, t)      # changes dX
+        PDE_AlgaeBiomass!(dX, M_biomass, Temperature, Height, params, t)      # changes dX
         HeatTransfer!(dX, Temperature, Height, params, t)          # changes dX
         PDE_CO2!(dX, CO2, Height, M_biomass, Temperature, params, t)            # changes dX
         HeightChange!(dX, Height, Temperature, params, t)
@@ -80,7 +80,7 @@ module AlgaeRiverReactor
         molecular_weight_co2 = params.molecular_weight_co2
         molecular_weight_water = params.molecular_weight_water
         CO2_in = S_co2(Temperature_in) .* density_water(Temperature_in) .* molecular_weight_co2 ./ molecular_weight_water
-        H_init = params.initial_height_profile
+        H_init = params.reactor_initial_liquid_level #reactor initial liquid level, m
     
 
         #ICs: initial conditions at t = 0
@@ -88,15 +88,16 @@ module AlgaeRiverReactor
         M_biomass_o[pos2idx(0,0:Nz)] .= C_biomass_in*(W*dy*dz)
         Temperature_o = ones( (Ny+1) * (Nz+1), 1) .* Temperature_in
         CO2_o = ones( (Ny+1) * (Nz+1), 1) .* CO2_in
-        H_o = ones((Ny+1)*(Nz+1), 1)
+        H_o = ones((Ny+1)*(Nz+1), 1).*H_init
 
-        H_in(x) = H_init(x)
 
-        for i = 0:Ny
+        #H_in(x) = H_init(x)
+
+        #for i = 0:Ny
             
-            H_o[pos2idx(i,0:Nz)] .= H_in(i)
+            #H_o[pos2idx(i,0:Nz)] .= H_in(i)
             
-        end
+        #end
         
         tspan = (0.0, Time_end)
 
@@ -135,10 +136,10 @@ module AlgaeRiverReactor
             H_out[i,:] .= sol.u[i][3*Nelements+1:4*Nelements]
         end
         
-        Plot_Biomass_Profile(Mout, H_out, T, params, filesuffix)
+        Plot_Biomass_Profile(Mout, Tout, T, params, filesuffix)
         Plot_Temperature_Profile(Tout, T, params, filesuffix)
-        Plot_CO2_Profile(CO2_out, H_out, T, params, filesuffix)
-        Plot_Height_Profile(H_out, Tout, T, params, filesuffix)
+        Plot_CO2_Profile(CO2_out, Tout, T, params, filesuffix)
+        Plot_Height_Profile(Tout, T, params, filesuffix)
 
     end
 

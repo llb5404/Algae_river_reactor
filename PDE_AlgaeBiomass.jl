@@ -1,8 +1,10 @@
 cd("C:/Users/slant/OneDrive/Desktop/Julia_2")
-function PDE_AlgaeBiomass!(dX, M, Height, params, t)
+function PDE_AlgaeBiomass!(dX, M, Temperature,Height, params, t)
 
     GHI_Data = params.global_horizontal_irradiance_data
     Tamb_Data = params.ambient_temperature_data
+    WNDSPD_Data = params.wind_speed_data
+    RH_Data = params.relative_humidity_data
 
     t_hour1 = floor(Int64, t)
     t_hour2 = floor(Int64, t)+1
@@ -12,15 +14,14 @@ function PDE_AlgaeBiomass!(dX, M, Height, params, t)
 
     GHI = GHI_Data[data_begin + t_hour1] * (t-t_hour1) + GHI_Data[data_begin + t_hour2] * (t_hour2 - t)
     Tamb = max.(((Tamb_Data[data_begin + t_hour1] * (t-t_hour1) + Tamb_Data[data_begin + t_hour2] * (t_hour2 - t))),0)
-
+    RH = RH_Data[data_begin + t_hour1] * (t-t_hour1) + RH_Data[data_begin + t_hour2] * (t_hour2 - t)
+    WNDSPD = max.((WNDSPD_Data[data_begin + t_hour1] * (t-t_hour1) + WNDSPD_Data[data_begin + t_hour2] * (t_hour2 - t)),0)
 
     Isat = params.max_biomass_light_saturation
     Cmax = params.max_biomass_concentration
     mu_max = params.max_biomass_specific_growth_rate
-    Q = params.input_volumetric_flow_rate
-    Vmax = params.input_max_flow_velocity
-    V_prof = params.velocity_profile
-    Pt_eng = params.change_potential_energy
+    Q = params.volumetric_flow_rate
+    V_profile(z, H) = params.velocity_profile(z, H, Tamb)
     Dy = params.biomass_diffusion_coefficient_y
     Dz = params.biomass_diffusion_coefficient_z
     L = params.reactor_length
@@ -36,13 +37,14 @@ function PDE_AlgaeBiomass!(dX, M, Height, params, t)
     Nelements = (Ny+1) * (Nz+1)
     M = max.(M, 0.0) #don't allow negative values
     dM = zeros( Nelements, 1)
-    dz = zeros(Nelements,1)
-    
-    for i = 0:Ny
-        for j = 0:Nz
-            dz[pos2idx(i,j)] = Height[pos2idx(i,j)]/Nz
-        end
-    end
+    H_o = params.reactor_initial_liquid_level
+    P_a = params.saturated_vapor_pressure_water_air(Tamb) 
+    K(T,S) = params.dVavgdx(T,S,RH,WNDSPD,P_a)
+    M_Evap(T) = params.evaporation_mass_flux(T,WNDSPD,RH,P_a)
+    rho_solution(S) = params.density_solution(Tamb,S)
+
+    Hght(x,T,S) = params.height(x,T,S,WNDSPD,RH,P_a,H_o)
+    dz(x,T,S) = Hght(x,T,S)/Nz
 
 
 
@@ -51,7 +53,6 @@ function PDE_AlgaeBiomass!(dX, M, Height, params, t)
     Iave(Mz, dz_y, z) = GHI .* 0.45 .* (1 - min(sum(Mz[1:z]/(Vol(dz_y))).*dz_y./Cmax,1.0) ) #
     phiL(Mz, dz_y, z) = Iave(Mz, dz_y, z) .* exp(1 - Iave(Mz, dz_y, z)./Isat) ./ Isat
     mu(Mz, dz_y, z) = mu_max .* phiL(Mz, dz_y, z)
-    V_profile(x,z,H) = V_prof(x,z,H)
 
     
         
@@ -79,8 +80,8 @@ function PDE_AlgaeBiomass!(dX, M, Height, params, t)
 
     for j=0:Nz
 
-        dM[pos2idx(Ny,j)] = ( + Dz * (M[pos2idx(Ny,max(0,j-1))] + M[pos2idx(Ny,min(Nz,j+1))] - 2*M[pos2idx(Ny,j)]) / dz[pos2idx(Ny,j)]^2
-                              - Vol(dz[pos2idx(Ny,j)])*V_profile(Ny, min(j,Nz-1)*dz[pos2idx(Ny,j)], Height[pos2idx(Ny,j)]) * (M[pos2idx(Ny,j)]/Vol(dz[pos2idx(Ny,j)]) - M[pos2idx(Ny-1,j)]/Vol(dz[pos2idx(Ny-1,j)])) / dy
+        dM[pos2idx(Ny,j)] = ( + Dz * (M[pos2idx(Ny,max(0,j-1))] + M[pos2idx(Ny,min(Nz,j+1))] - 2*M[pos2idx(Ny,j)]) / dz(Ny,Temperature[pos2idx(Ny,j)],0)^2
+                              - Vol(dz(Ny,Temperature[pos2idx(Ny,j)],0))*V_profile(dz(Ny,Temperature[pos2idx(Ny,j)],0)*j, Hght(Ny,Temperature[pos2idx(Ny,j)],0)) * (M[pos2idx(Ny,j)]/Vol(dz(Ny,Temperature[pos2idx(Ny,j)],0)) - M[pos2idx(Ny-1,j)]/Vol(dz(Ny-1,Temperature[pos2idx(Ny-1,j)],0))) / dy
                             )
     end
 
@@ -88,26 +89,26 @@ function PDE_AlgaeBiomass!(dX, M, Height, params, t)
     for i=1:Ny-1
         
 
-        dM[pos2idx(i,0)] =     ( Vol(dz[pos2idx(i,0)])*Dy * (M[pos2idx(i-1,0)]/Vol(dz[pos2idx(i-1,0)]) + M[pos2idx(i+1,0)]/Vol(dz[pos2idx(i+1,0)]) - 2*M[pos2idx(i,0)]/Vol(dz[pos2idx(i,0)])) / dy^2  #small
-                               + Dz * (M[pos2idx(i,0)] + M[pos2idx(i,0+1)] - 2*M[pos2idx(i,0)]) /dz[pos2idx(i,0)]^2
-                               - Vol(dz[pos2idx(i,0)])*V_profile(i, 0, Height[pos2idx(i,0)]) * ( M[pos2idx(i,0)]/Vol(dz[pos2idx(i,0)]) - M[pos2idx(i-1,0)]/Vol(dz[pos2idx(i-1,0)]) )/dy
-                               + mu(M[pos2idx(i,0:Nz)],dz[pos2idx(i,0)], 0) * M[pos2idx(i,0)]
+        dM[pos2idx(i,0)] =     ( Vol(dz(i,Temperature[pos2idx(i,0)],0))*Dy * (M[pos2idx(i-1,0)]/Vol(dz(i-1,Temperature[pos2idx(i-1,0)],0)) + M[pos2idx(i+1,0)]/Vol(dz(i+1,Temperature[pos2idx(i+1,0)],0)) - 2*M[pos2idx(i,0)]/Vol(dz(i,Temperature[pos2idx(i,0)],0))) / dy^2  #small
+                               + Dz * (M[pos2idx(i,0)] + M[pos2idx(i,0+1)] - 2*M[pos2idx(i,0)]) /dz(i,Temperature[pos2idx(i,0)],0)^2
+                               - Vol(dz(i,Temperature[pos2idx(i,0)],0))*V_profile(dz(i,Temperature[pos2idx(i,0)],0)*0, Hght(i,Temperature[pos2idx(i,0)],0)) * ( M[pos2idx(i,0)]/Vol(dz(i,Temperature[pos2idx(i,0)],0)) - M[pos2idx(i-1,0)]/Vol(dz(i-1,Temperature[pos2idx(i-1,0)],0)) )/dy
+                               + mu(M[pos2idx(i,0:Nz)],dz(i,Temperature[pos2idx(i,0)],0), 0) * M[pos2idx(i,0)]
                                )
 
-        dM[pos2idx(i,Nz)] =    ( Vol(dz[pos2idx(i,Nz)])*Dy * (M[pos2idx(i-1,Nz)]/Vol(dz[pos2idx(i-1,Nz)]) + M[pos2idx(i+1,Nz)]/Vol(dz[pos2idx(i+1,Nz)]) - 2*M[pos2idx(i,Nz)]/Vol(dz[pos2idx(i,Nz)])) / dy^2 #small
-                               + Dz * (M[pos2idx(i,Nz-1)] + M[pos2idx(i,Nz)] - 2*M[pos2idx(i,Nz)]) / dz[pos2idx(i,Nz)]^2
-                               - Vol(dz[pos2idx(i,Nz)])*V_profile(i,Nz*dz[pos2idx(i,Nz)], Height[pos2idx(i,Nz)]) * (M[pos2idx(i,Nz)]/Vol(dz[pos2idx(i,Nz)]) - M[pos2idx(i-1,Nz)]/Vol(dz[pos2idx(i-1,Nz)])) / dy
-                               + mu(M[pos2idx(i,0:Nz)],dz[pos2idx(i,Nz)], Nz) * M[pos2idx(i,Nz)]
+        dM[pos2idx(i,Nz)] =    ( Vol(dz(i,Temperature[pos2idx(i,Nz)],0))*Dy * (M[pos2idx(i-1,Nz)]/Vol(dz(i-1,Temperature[pos2idx(i-1,Nz)],0)) + M[pos2idx(i+1,Nz)]/Vol(dz(i+1,Temperature[pos2idx(i+1,Nz)],0)) - 2*M[pos2idx(i,Nz)]/Vol(dz(i,Temperature[pos2idx(i,Nz)],0))) / dy^2 #small
+                               + Dz * (M[pos2idx(i,Nz-1)] + M[pos2idx(i,Nz)] - 2*M[pos2idx(i,Nz)]) / dz(i,Temperature[pos2idx(i,Nz)],0)^2
+                               - Vol(dz(i,Temperature[pos2idx(i,Nz)],0))*V_profile(dz(i,Temperature[pos2idx(i,Nz)],0)*Nz, Hght(i,Temperature[pos2idx(i,Nz)],0)) * (M[pos2idx(i,Nz)]/Vol(dz(i,Temperature[pos2idx(i,Nz)],0)) - M[pos2idx(i-1,Nz)]/Vol(dz(i-1,Temperature[pos2idx(i-1,Nz)],0))) / dy
+                               + mu(M[pos2idx(i,0:Nz)],dz(i,Temperature[pos2idx(i,Nz)],0), Nz) * M[pos2idx(i,Nz)]
                                )
     end
 
     for i=1:Ny-1
         for j=1:Nz-1
 
-            dM[pos2idx(i,j)] = ( Vol(dz[pos2idx(i,j)])*Dy * (M[pos2idx(i-1,j)]/Vol(dz[pos2idx(i-1,j)]) + M[pos2idx(i+1,j)]/Vol(dz[pos2idx(i+1,j)]) - 2*M[pos2idx(i,j)]/Vol(dz[pos2idx(i,j)])) / dy^2
-                               + Dz * (M[pos2idx(i,j-1)] + M[pos2idx(i,j+1)] - 2*M[pos2idx(i,j)]) / dz[pos2idx(i,j)]^2
-                               - Vol(dz[pos2idx(i,j)])*V_profile(i,j*dz[pos2idx(i,j)], Height[pos2idx(i,j)]) * (M[pos2idx(i,j)]/Vol(dz[pos2idx(i,j)]) - M[pos2idx(i-1,j)]/Vol(dz[pos2idx(i-1,j)])) / dy
-                               + mu(M[pos2idx(i,0:Nz)],dz[pos2idx(i,j)], j) * M[pos2idx(i,j)]
+            dM[pos2idx(i,j)] = ( Vol(dz(i,Temperature[pos2idx(i,j)],0))*Dy * (M[pos2idx(i-1,j)]/Vol(dz(i-1,Temperature[pos2idx(i-1,j)],0)) + M[pos2idx(i+1,j)]/Vol(dz(i+1,Temperature[pos2idx(i+1,j)],0)) - 2*M[pos2idx(i,j)]/Vol(dz(i,Temperature[pos2idx(i,j)],0))) / dy^2
+                               + Dz * (M[pos2idx(i,j-1)] + M[pos2idx(i,j+1)] - 2*M[pos2idx(i,j)]) / dz(i,Temperature[pos2idx(i,j)],0)^2
+                               - Vol(dz(i,Temperature[pos2idx(i,j)],0))*V_profile(dz(i,Temperature[pos2idx(i,j)],0)*j, Hght(i,Temperature[pos2idx(i,j)],0)) * (M[pos2idx(i,j)]/Vol(dz(i,Temperature[pos2idx(i,j)],0)) - M[pos2idx(i-1,j)]/Vol(dz(i-1,Temperature[pos2idx(i-1,j)],0))) / dy
+                               + mu(M[pos2idx(i,0:Nz)],dz(i,Temperature[pos2idx(i,j)],0), j) * M[pos2idx(i,j)]
                                )
         end
     end

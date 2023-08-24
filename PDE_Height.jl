@@ -16,6 +16,7 @@ function HeightChange!(dX, H, Temperature, params, t)
 
     rho_water = params.density_water(Tamb)
     rho_air = params.density_air(Tamb)
+    rho_sol = params.density_solution
     dyn_visc_water = params.dynamic_viscosity_water(Tamb)
     dyn_visc_air = params.dynamic_viscosity_air(Tamb)
     cp_water = params.specific_heat_capacity_water(Tamb)
@@ -27,6 +28,8 @@ function HeightChange!(dX, H, Temperature, params, t)
     k_air = params.thermal_conductivity_air(Tamb)
     D_w_a = params.diffusion_coeff_water_air(Tamb)
     hfg_water = params.heat_vaporization_water(Tamb)
+    g = params.acceleration_gravity
+    theta = params.reactor_incline
 
     alpha_w = params.solar_reflectance_water
     M_water = params.molecular_weight_water
@@ -39,58 +42,27 @@ function HeightChange!(dX, H, Temperature, params, t)
     k_concrete = params.thermal_conductivity_concrete
     f_a = params.photosynthetic_efficiency
 
-    Q = params.input_volumetric_flow_rate       # m^3/hour
+    Q = params.volumetric_flow_rate       # m^3/hour
     L = params.reactor_length                   # m
     W = params.reactor_width                    # m
-    H_init = params.reactor_initial_liquid_level     # m
-    Vmax = params.input_max_flow_velocity       # m/hour
-    Vavg = params.average_flow_velocity
-    V_prof = params.velocity_profile
-    Pt_eng = params.change_potential_energy
+    Vavg(H) = params.average_flow_velocity(H,Tamb) #m/hour
+   
     P_atm = params.reference_pressure
     Ny = params.num_odes_y
     Nz = params.num_odes_z
 
     pos2idx(y,z) = (y.+1) .+ z.*(Ny.+1)
     idx2pos(pos) = [Integer(pos - 1 - (Ny+1) * floor( (pos-1) ./ (Ny.+1))), Integer(floor( (pos-1) ./ (Ny.+1)))]
-    dy = L / Ny
-    dz = H_init / Nz
+    
 
     Nelements = (Ny+1) * (Nz+1)
     H = max.(H, 0.0) #don't allow negative values
     dH = zeros( Nelements, 1)
 
-   
-    #Calculate the Reynold's Number
-    kin_visc_a = dyn_visc_air / rho_air      # m^2/s
-    L_c = L
-    Re_L = L_c * WNDSPD / kin_visc_a
-    Sch_L = kin_visc_a / D_w_a
 
-    if Re_L < (3*10^5)                                      #then the flow is laminar and use:
-        Sh_L = 0.628 * (Re_L.^0.5) * (Sch_L.^(1/3))
-    elseif Re_L > (5*10^5)                                  #then the flow is turbulent and use:
-        Sh_L = 0.035 * (Re_L.^0.8) * (Sch_L.^(1/3))
-    else                                                    #Average the values sherwood values for laminar and turbulent
-        Sh_L = ((0.628.*(Re_L.^0.5) * (Sch_L.^(1/3))) + (0.035 * (Re_L.^0.8) * (Sch_L.^(1/3))))/2
-    end
+    K(T,S) = params.dVavgdx(T,S,RH,WNDSPD,P_a)
+    M_Evap(T) = params.evaporation_mass_flux(T,WNDSPD,RH,P_a)
 
-    #Now with the sherwood number we can calculate mass transfer coefficient, K
-    K = Sh_L * D_w_a / L_c
-
-    Evap_C = 25 +19*WNDSPD #kg/m2-hr
-
-    #humidity ratio in dry air
-    X_air = 0.62198*(P_a*(RH/100))/(P_atm-(P_a*(RH/100))) #kg H2O/ kg dry air
-    X_surface(Temp) = 0.62198*(P_w(Temp)/(P_atm-P_w(Temp))) #kg H2O/kg dry air
-
-
-
-    M_Evap(Temp) = -Evap_C*(X_surface(Temp)-X_air) #kg/m2-hr
-    #M_Evap(Temp) = -((K.* (P_w(Temp)/Temp-(P_a.*(RH/100))/Tamb)) / (R) / L_c) * M_water * 3600
-     
-
-    
     
   
 
@@ -98,29 +70,25 @@ function HeightChange!(dX, H, Temperature, params, t)
        
  
         # BC 2
-        dH[pos2idx(i, 0)] = (M_Evap(Temperature[pos2idx(i,0)])*sqrt(dy^2+(max(H[pos2idx(i-1,0)],0)-max(H[pos2idx(i,0)],0))^2))/(rho_water*dy)
-        +(Vavg(i-1)*H[pos2idx(i-1,0)]-Vavg(i)*H[pos2idx(i,0)])/dy
-
+        dH[pos2idx(i, 0)] = (((dyn_visc_water/rho_water)*(M_Evap(Temperature[pos2idx(i,0)])+K(Temperature[pos2idx(i,0)],0)*rho_sol(Temperature[pos2idx(i,0)],0)))/(rho_water*g*tan(theta)*H[pos2idx(i,0)]^2))*Vavg(H[pos2idx(i,0)])
         # BC 3
-        dH[pos2idx(i, Nz)] = (M_Evap(Temperature[pos2idx(i,0)])*sqrt(dy^2+(max(H[pos2idx(i-1,0)],0)-max(H[pos2idx(i,0)],0))^2))/(rho_water*dy)
-        +(Vavg(i-1)*H[pos2idx(i-1,0)]-Vavg(i)*H[pos2idx(i,0)])/dy
+        dH[pos2idx(i, Nz)] = ((dyn_visc_water/rho_water)*(M_Evap(Temperature[pos2idx(i,0)])+K(Temperature[pos2idx(i,Nz)],0)*rho_sol(Temperature[pos2idx(i,Nz)],0))/(rho_water*g*tan(theta)*H[pos2idx(i,Nz)]^2))*Vavg(H[pos2idx(i,Nz)])
         
-        
+
     end
 
     for j = 0:Nz
 
         dH[pos2idx(0, j)] = 0.0 #((k_water * (T[pos2idx(0, max(0,j-1))] - 2*T[pos2idx(0, j)] + T[pos2idx(Ny, min(Nz,j+1))]) / dz^2))/(rho_water*cp_water)
-
     end
 
     for i=1:Ny
         for j=1:Nz-1
-            dH[pos2idx(i,j)] = (M_Evap(Temperature[pos2idx(i,0)])*sqrt(dy^2+(max(H[pos2idx(i-1,0)],0)-max(H[pos2idx(i,0)],0))^2))/(rho_water*dy)
-            +(Vavg(i-1)*H[pos2idx(i-1,0)]-Vavg(i)*H[pos2idx(i,0)])/dy
+            dH[pos2idx(i,j)] = ((dyn_visc_water/rho_water)*(M_Evap(Temperature[pos2idx(i,0)])+K(Temperature[pos2idx(i,j)],0)*rho_sol(Temperature[pos2idx(i,j)],0))/(rho_water*g*tan(theta)*H[pos2idx(i,j)]^2))* Vavg(H[pos2idx(i,j)])
+        
         end
     end
-    
+
     @views dX[3*Nelements+1:4*Nelements] .= dH        # order matters!  The @views operator takes a slice out of an array without making a copy.
     nothing
 end

@@ -1,5 +1,5 @@
 cd("C:/Users/slant/OneDrive/Desktop/Julia_2")
-function Plot_Biomass_Profile(Mout, H_out, T, params, filesuffix)
+function Plot_Biomass_Profile(Mout, Tout, T, params, filesuffix)
     Ny = params.num_odes_y
     Nz = params.num_odes_z
     Nelements = (Ny+1) * (Nz+1)
@@ -11,8 +11,8 @@ function Plot_Biomass_Profile(Mout, H_out, T, params, filesuffix)
     WNDSPD_Data = params.wind_speed_data
     RH_Data = params.relative_humidity_data
     data_begin = params.data_begin
-    Q = params.input_volumetric_flow_rate       # m^3/hour
-    Vmax = params.input_max_flow_velocity       # m/hour
+
+    Q(H,T) = params.volumetric_flow_rate(H,T)       # m^3/hour
     V_prof = params.velocity_profile
     L = params.reactor_length                   # m
     W = params.reactor_width                    # m
@@ -25,8 +25,8 @@ function Plot_Biomass_Profile(Mout, H_out, T, params, filesuffix)
     Z = LinRange(0,H,Nz+1)
    
     
-    Ieff(Cz, z, Hght) = (1 - min(sum(Cz[1:z]) * Hght / Nz / Cmax, 1.0))
-    phiL(Cz, zlist, Hght) = [Ieff(Cz, z, Hght) * exp(1 - Ieff(Cz, z, Hght)) for z in zlist]
+    Ieff(Cz, z, Hgt) = (1 - min(sum(Cz[1:z]) * Hgt / Nz / Cmax, 1.0))
+    phiL(Cz, zlist, Hgt) = [Ieff(Cz, z, Hgt) * exp(1 - Ieff(Cz, z, Hgt)) for z in zlist]
     
     GHIout = zeros(TL,1)
     for i in 1:TL
@@ -34,18 +34,57 @@ function Plot_Biomass_Profile(Mout, H_out, T, params, filesuffix)
         t_hour2 = floor(Int64, T[i])+1
         GHIout[i] = GHI_Data[data_begin + t_hour1] * (T[i]-t_hour1) + GHI_Data[data_begin + t_hour2] * (t_hour2 - T[i])
     end
+    WNDSPDout = zeros(TL, 1)
+    for i in 1:TL
+        t_hour1 = floor(Int64, T[i])
+        t_hour2 = floor(Int64, T[i])+1
+        WNDSPDout[i] = WNDSPD_Data[data_begin + t_hour1]*(T[i]-t_hour1)+WNDSPD_Data[data_begin + t_hour2]*(t_hour2-T[i])
+    end
+    RHout = zeros(TL, 1)
+    for i in 1:TL
+        t_hour1 = floor(Int64, T[i])
+        t_hour2 = floor(Int64, T[i])+1
+        RHout[i] = RH_Data[data_begin + t_hour1]*(T[i]-t_hour1)+RH_Data[data_begin + t_hour2]*(t_hour2-T[i])
+    end
+    Tambout = zeros(TL, 1)
+    for i in 1:TL
+        t_hour1 = floor(Int64, T[i])
+        t_hour2 = floor(Int64, T[i])+1
+        Tambout[i] = (Tamb_Data[data_begin + t_hour1]*(T[i]-t_hour1)+Tamb_Data[data_begin + t_hour2]*(t_hour2-T[i]))
+    end
     T_days = T ./ 24.0
     
 
     #V_profile(x,zlist,H) =([V_prof(x,z*(H/Int(Nz_max),H)) for z in zlist])/3600
     #velocity_profile(x,z,H) = max_flow_velocity(x)*(1-(z/H)) #z = dz(x)*z
 
+    H_o = params.reactor_initial_liquid_level
+    P_a(Tamb) = params.saturated_vapor_pressure_water_air(Tamb)
+    Pa_out = zeros(TL, 1)
+    for i in 1:TL
+        Pa_out[i] = P_a(Tambout[i])
+    end
+    
+
+
+    Hght(x,T,S,WNDSPD,RH,P) = params.height(x,T,S,WNDSPD,RH,P,H_o)
+    dz(x,T,S,WNDSPD,RH,P) = Hght(x,T,S,WNDSPD,RH,P)/Nz
+
     Cout = zeros(TL, Nelements)
 
     for i= 1:TL
         for j = 0:Ny
             for k = 0:Nz
-                Cout[i,pos2idx(j,k)] = Mout[i,pos2idx(j,k)]/(dy*W*(H_out[i,pos2idx(j,k)]/Nz))
+                Cout[i,pos2idx(j,k)] = Mout[i,pos2idx(j,k)]/(dy*W*(Hght(j,Tout[i,pos2idx(j,k)],0,WNDSPDout[i],RHout[i],Pa_out[i])/Nz))
+            end
+        end
+    end
+
+    Prod_out = zeros(TL,Nelements)
+    for i = 1:TL
+        for j = 0:Ny
+            for k = 0:Nz
+                Prod_out[i,pos2idx(j,k)] = ((Cout[i,pos2idx(j,k)]- Cinit)* Q(Hght(j,Tout[i,pos2idx(j,k)],0,WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])* 24.0* 1000)/(W*L)
             end
         end
     end
@@ -53,18 +92,17 @@ function Plot_Biomass_Profile(Mout, H_out, T, params, filesuffix)
     (maxval, maxpos) = findmax(Cout[TL,:])
     (Ny_max, Nz_max) = idx2pos(maxpos)
 
-    P(C) = (Statistics.mean(C[:, pos2idx(Ny,0:Nz)], dims=2) .- Cinit).* Q ./ L ./ W .* 24.0 .* 1000; # mass flow rate [g/day] / surface area [m^2]
-    
-    H_f = H_out[TL,pos2idx(Int(Ny_max),0)]
-    Z_f = LinRange(0,H_f,Nz+1)
+    P(C) = Statistics.mean(C[:, pos2idx(Ny,0:Nz)], dims = 2)
+
+    #P(C) = (Statistics.mean(C[:, pos2idx(Ny,0:Nz)], dims=2) .- Cinit).* Q ./ L ./ W .* 24.0 .* 1000; # mass flow rate [g/day] / surface area [m^2]
+
 
 
     p1 = plot(Y,Cout[TL, pos2idx(0:Ny,0)] * 1000.0, xlabel = "Length [m]", ylabel = "Algae Cell Density (g/m^3)", title="Algae Surface Cell Density", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p2 = plot(Y,Cout[TL, pos2idx(0:Ny,Nz)] * 1000.0, xlabel = "Length [m]", ylabel = "Algae Cell Density (g/m^3)", title="Algae Floor Cell Density", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
-    p3 = plot(T, P(Cout), xlabel = "Time [hours]", ylabel = "Algae Productivity (g/m^2/day)", title = "Net Continuous Biomass Productivity", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
-    p4 = plot(Z_f, 100.0 .* phiL(Cout[TL,pos2idx(Int(Ny_max),0:Nz)], 0:Nz, H_out[TL,pos2idx(Int(Ny_max),0)]), xlabel = "Liquid Level [m]", ylabel = "Light Intensity (%)", title = "Light Gradient", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
-    p5 = plot(T, GHIout, xlabel = "Time [hours]", ylabel = "Global Horizontal Irradiance (GHI) [W/m^2]", title = "Solar Energy", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
-    p = plot(p1, p2, p3, p4, p5, layout=(5,1), legend=false, size=(1200,1200))
+    p3 = plot(T, P(Prod_out), xlabel = "Time [hours]", ylabel = "Algae Productivity (g/m^2/day)", title = "Net Continuous Biomass Productivity", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
+    p4 = plot(T, GHIout, xlabel = "Time [hours]", ylabel = "Global Horizontal Irradiance (GHI) [W/m^2]", title = "Solar Energy", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
+    p = plot(p1, p2, p3, p4, layout=(4,1), legend=false, size=(1200,1200))
     png("Biomass_AlgaeRiverReactor_$filesuffix")
     savefig(p, "Biomass_AlgaeRiverReactor_$filesuffix.ps")
     Average_Continuous_Productivity = Statistics.mean(P(Cout)[max(1,TL-20):TL])
@@ -163,13 +201,45 @@ function Plot_Temperature_Profile(Tout, T, params, filesuffix)
     savefig(q, "TemperatureProfile_AlgaeRiverReactor_$filesuffix.ps")
     png("TemperatureProfile_AlgaeRiverReactor_$filesuffix")
 end
-function Plot_CO2_Profile(CO2_out, H_out, T, params, filesuffix)
+function Plot_CO2_Profile(CO2_out, Tout, T, params, filesuffix)
     Ny = params.num_odes_y
     Nz = params.num_odes_z
     Nelements = (Ny+1) * (Nz+1)
     pos2idx(y,z) = (y.+1) .+ z.*(Ny.+1)
     idx2pos(pos) = [Integer(pos - 1 - (Ny+1) * floor( (pos-1) ./ (Ny.+1))), Integer(floor( (pos-1) ./ (Ny.+1)))]
     TL = length(T)
+
+    GHI_Data = params.global_horizontal_irradiance_data
+    Tamb_Data = params.ambient_temperature_data
+    WNDSPD_Data = params.wind_speed_data
+    RH_Data = params.relative_humidity_data
+    data_begin = params.data_begin
+
+    GHIout = zeros(TL,1)
+    for i in 1:TL
+        t_hour1 = floor(Int64, T[i])
+        t_hour2 = floor(Int64, T[i])+1
+        GHIout[i] = GHI_Data[data_begin + t_hour1] * (T[i]-t_hour1) + GHI_Data[data_begin + t_hour2] * (t_hour2 - T[i])
+    end
+    WNDSPDout = zeros(TL, 1)
+    for i in 1:TL
+        t_hour1 = floor(Int64, T[i])
+        t_hour2 = floor(Int64, T[i])+1
+        WNDSPDout[i] = WNDSPD_Data[data_begin + t_hour1]*(T[i]-t_hour1)+WNDSPD_Data[data_begin + t_hour2]*(t_hour2-T[i])
+    end
+    RHout = zeros(TL, 1)
+    for i in 1:TL
+        t_hour1 = floor(Int64, T[i])
+        t_hour2 = floor(Int64, T[i])+1
+        RHout[i] = RH_Data[data_begin + t_hour1]*(T[i]-t_hour1)+RH_Data[data_begin + t_hour2]*(t_hour2-T[i])
+    end
+    Tambout = zeros(TL, 1)
+    for i in 1:TL
+        t_hour1 = floor(Int64, T[i])
+        t_hour2 = floor(Int64, T[i])+1
+        Tambout[i] = (Tamb_Data[data_begin + t_hour1]*(T[i]-t_hour1)+Tamb_Data[data_begin + t_hour2]*(t_hour2-T[i]))
+    end
+
     L = params.reactor_length                   # m
     W = params.reactor_width                    # m
     H = params.reactor_initial_liquid_level     # m
@@ -179,18 +249,29 @@ function Plot_CO2_Profile(CO2_out, H_out, T, params, filesuffix)
     Z = LinRange(0,H,Nz+1)
     dy = L/Ny
 
-    Ieff(Cz, z, Hght) = (1 - min(sum(Cz[1:z]) * Hght / Nz / Cmax, 1.0))
-    phiL(Cz, zlist,Hght) = [Ieff(Cz, z, Hght) * exp(1 - Ieff(Cz, z, Hght)) for z in zlist]
+    Ieff(Cz, z, Hgt) = (1 - min(sum(Cz[1:z]) * Hgt / Nz / Cmax, 1.0))
+    phiL(Cz, zlist,Hgt) = [Ieff(Cz, z, Hgt) * exp(1 - Ieff(Cz, z, Hgt)) for z in zlist]
     T_days = T ./ 24.0
     (maxval, maxpos) = findmax(CO2_out[TL,:])
     (Ny_max, Nz_max) = idx2pos(maxpos)
 
     CO2C_out = zeros(TL, Nelements)
 
+    H_o = params.reactor_initial_liquid_level
+
+    P_a(Tamb) = params.saturated_vapor_pressure_water_air(Tamb)
+    Pa_out = zeros(TL, 1)
+    for i in 1:TL
+        Pa_out[i] = P_a(Tambout[i])
+    end
+
+    Hght(x,T,S,WNDSPD,RH,P) = params.height(x,T,S,WNDSPD,RH,P,H_o)
+    dz(x,T,S,WNDSPD,RH,P) = Hght(x,T,S,WNDSPD,RH,P)/Nz
+
     for i= 1:TL
         for j = 0:Ny
             for k = 0:Nz
-                CO2C_out[i,pos2idx(j,k)] = CO2_out[i,pos2idx(j,k)]/(dy*W*(H_out[i,pos2idx(j,k)]/Nz))
+                CO2C_out[i,pos2idx(j,k)] = CO2_out[i,pos2idx(j,k)]/(dy*W*(Hght(j,Tout[i,pos2idx(j,k)],0,WNDSPDout[i],RHout[i],Pa_out[i])/Nz))
             end
         end
     end
@@ -217,7 +298,7 @@ function Plot_CO2_Profile(CO2_out, H_out, T, params, filesuffix)
     png("CO2Profile_AlgaeRiverReactor_$filesuffix")
 end
 
-function Plot_Height_Profile(H_out, Tout, T, params, filesuffix)
+function Plot_Height_Profile(Tout, T, params, filesuffix)
     Ny = params.num_odes_y
     Nz = params.num_odes_z
     Nelements = (Ny+1) * (Nz+1)
@@ -289,36 +370,53 @@ function Plot_Height_Profile(H_out, Tout, T, params, filesuffix)
             Cum_Evap_Loss[i,pos2idx(j,0)] = W*L*sum(M_Evap[1:i,pos2idx(j,0)]) #kg
         end
     end
+    K = params.dVavgdx
+    rho_sol = params.density_solution
+    Kterm_out = zeros(TL, Ny+1)
+    for i in 1:TL
+        for j in 0:Ny
+            Kterm_out[i,pos2idx(j,0)] = K(Tout[i,pos2idx(j,0)],0,RHout[i],WNDSPDout[i],P_w(Tambout[i]))*rho_sol(Tout[i,pos2idx(j,0)],0)
+        end
+    end
+
+    H_o = params.reactor_initial_liquid_level
+
+    P_a(Tamb) = params.saturated_vapor_pressure_water_air(Tamb)
+
+    Pa_out = zeros(TL, 1)
+    for i in 1:TL
+        Pa_out[i] = P_a(Tambout[i])
+    end
     
+
+    Hght(x,T,S,WNDSPD,RH,P) = params.height(x,T,S,WNDSPD,RH,P,H_o)
+    dz(x,T,S,WNDSPD,RH,P) = Hght(x,T,S,WNDSPD,RH,P)/Nz
+
+
+    Hght_out = zeros(TL,Ny+1)
+
+    for i in 1:TL
+        for j in 0:Ny
+
+            Hght_out[i,pos2idx(j,0)] = Hght(j,Tout[i,pos2idx(j,0)],0,WNDSPDout[i],RHout[i],Pa_out[i])
+        end
+    end
     
   
     T_days = T ./ 24.0
-    (maxval, maxpos) = findmax(H_out[TL,:])
+    (maxval, maxpos) = findmax(Hght_out[TL,:])
     (Ny_max, Nz_max) = idx2pos(maxpos)
-    S(Hght) = Statistics.mean(Hght[:,pos2idx(0:Ny,0)], dims=2)
+    S(Hgt) = Statistics.mean(Hgt[:,pos2idx(0:Ny,0)], dims=2)
     Q(M) = Statistics.mean(M[:,pos2idx(0:Ny,0)], dims=2);
   
-    p1 = plot(Y,H_out[TL, pos2idx(0:Ny,0)], xlabel = "Length [m]", ylabel = "Height [m]", title="Height vs Length", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
-    p2 = plot(T,S(H_out), xlabel = "Time [hours]", ylabel = "Average Height [m]", title="Average height over time", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
+    p1 = plot(Y,Hght_out[TL, pos2idx(0:Ny,0)], xlabel = "Length [m]", ylabel = "Height [m]", title="Height vs Length", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
+    p2 = plot(T,S(Hght_out), xlabel = "Time [hours]", ylabel = "Average Height [m]", title="Average height over time", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p3 = plot(T,Q(M_Evap), xlabel = "Time [hours]", ylabel = "Average Evaporation Rate [kg/m2-hr]", title="Average evaporation rate over time", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
-    p4 = plot(T,Q(Cum_Evap_Loss), xlabel = "Time [hours]", ylabel = "Average Cumulative Water Loss [kg]", title="Average cumulative water loss over time", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
-    p = plot(p1, p2, p3, p4, layout=(4,1), legend=false, size=(1200,1200))
+    p4 = plot(T,Q(Kterm_out), xlabel = "Time [hours]", ylabel = "Average Counter-Evaporation Rate [kg/m2-hr]", title="Average counter-evaporation rate over time", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
+    p5 = plot(T,Q(Cum_Evap_Loss), xlabel = "Time [hours]", ylabel = "Average Cumulative Water Loss [kg]", title="Average cumulative water loss over time", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
+    p = plot(p1, p2, p3, p4, p5, layout=(5,1), legend=false, size=(1200,1200))
     png("Height_AlgaeRiverReactor_$filesuffix")
     savefig(p, "Height_AlgaeRiverReactor_$filesuffix.ps")
     # Cout(y,z), z = 0 is the surface and z = H is the bottom. For plotting, we will invert the z-scale so that z = 0 is the bottom and z = H is the surface.
-    Hout2D = zeros(Nz+1, Ny+1)
-    for i in 0:Ny
-        for j in 0:Nz
-            Hout2D[j+1,i+1] = max(0, H_out[TL, pos2idx(i,j)]) # don't allow negative values
-        end
-    end
-    q = heatmap(Y, Z, Hout2D ,
-            yflip=true,
-            c=cgrad([:blue, :white,:red, :yellow]),
-            xlabel="Length (0 is entry) [m]", ylabel="Liquid Level (0 is surface) [m]",
-            title="Height (m)",
-            size=(800,400)
-            )
-    savefig(q, "HeightProfile_AlgaeRiverReactor_$filesuffix.ps")
-    png("HeightProfile_AlgaeRiverReactor_$filesuffix")
+    
 end

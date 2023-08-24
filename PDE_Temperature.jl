@@ -15,6 +15,7 @@ function HeatTransfer!(dX, T, Height, params, t)
     Tamb = max.(((Tamb_Data[data_begin + t_hour1] * (t-t_hour1) + Tamb_Data[data_begin + t_hour2] * (t_hour2 - t))),0)
 
     rho_water = params.density_water(Tamb)
+    rho_solution(S) = params.density_solution(Tamb,S)
     rho_air = params.density_air(Tamb)
     dyn_visc_water = params.dynamic_viscosity_water(Tamb)
     dyn_visc_air = params.dynamic_viscosity_air(Tamb)
@@ -39,13 +40,10 @@ function HeatTransfer!(dX, T, Height, params, t)
     k_concrete = params.thermal_conductivity_concrete
     f_a = params.photosynthetic_efficiency
 
-    Q = params.input_volumetric_flow_rate       # m^3/hour
+    Q = params.volumetric_flow_rate       # m^3/hour
     L = params.reactor_length                   # m
     W = params.reactor_width                    # m
-    #H = params.reactor_initial_liquid_level     # m
-    Vmax = params.input_max_flow_velocity       # m/hour
-    V_prof = params.velocity_profile
-    Pt_eng = params.change_potential_energy
+    V_profile(z,H) = params.velocity_profile(z,H,Tamb)
     P_atm = params.reference_pressure
     Ny = params.num_odes_y
     Nz = params.num_odes_z
@@ -57,12 +55,13 @@ function HeatTransfer!(dX, T, Height, params, t)
     Nelements = (Ny+1) * (Nz+1)
     T = max.(T, 0.0) #don't allow negative values
     dT = zeros( Nelements, 1)
-    dz = zeros(Nelements,1)
-    for i = 0:Ny
-        for j = 0:Nz
-            dz[pos2idx(i,j)] = Height[pos2idx(i,j)]/Nz
-        end
-    end
+    H_o = params.reactor_initial_liquid_level
+    K(T,S) = params.dVavgdx(T,S,RH,WNDSPD,P_a)
+    M_Evap(T) = params.evaporation_mass_flux(T,WNDSPD,RH,P_a)
+
+    Hght(x,T,S) = params.height(x,T,S,WNDSPD,RH,P_a,H_o)
+    dz(x,T,S) = Hght(x,T,S)/Nz
+    
 
     #constants in all heat flux functions
     #This function defines the heat flux from direct solar radiation
@@ -85,29 +84,9 @@ function HeatTransfer!(dX, T, Height, params, t)
     kin_visc_a = dyn_visc_air / rho_air      # m^2/s
     L_c = L
     Re_L = L_c * WNDSPD / kin_visc_a
-    Sch_L = kin_visc_a / D_w_a
 
-    if Re_L < (3*10^5)                                      #then the flow is laminar and use:
-        Sh_L = 0.628 * (Re_L.^0.5) * (Sch_L.^(1/3))
-    elseif Re_L > (5*10^5)                                  #then the flow is turbulent and use:
-        Sh_L = 0.035 * (Re_L.^0.8) * (Sch_L.^(1/3))
-    else                                                    #Average the values sherwood values for laminar and turbulent
-        Sh_L = ((0.628.*(Re_L.^0.5) * (Sch_L.^(1/3))) + (0.035 * (Re_L.^0.8) * (Sch_L.^(1/3))))/2
-    end
+    Q_Evap(Temp) = params.evaporation_heat_flux(Temp,WNDSPD,RH,P_a)
 
-    #Now with the sherwood number we can calculate mass transfer coefficient, K
-    K = Sh_L * D_w_a / L_c
-    Evap_C = 25 +19*WNDSPD #kg/m2-hr
-
-    #humidity ratio in dry air
-    X_air = 0.62198*(P_a*(RH/100))/(P_atm-(P_a*(RH/100))) #kg H2O/ kg dry air
-    X_surface(Temp) = 0.62198*(P_w(Temp)/(P_atm-P_w(Temp))) #kg H2O/kg dry air
-
-
-
-    M_Evap(Temp) = Evap_C*(X_surface(Temp)-X_air)
-
-    Q_Evap(Temp) = -(Evap_C*(X_surface(Temp)-X_air))*hfg_water
     #Q_Recover(Temp) = M_Evap(Temp) * cp_water * (293.15-Temp) * 3600       #not sure what this is
 
     #This function calculates the evaporation rate of the pond as well as the
@@ -134,7 +113,6 @@ function HeatTransfer!(dX, T, Height, params, t)
     Q_sum1(Temp) = Q_Longwave_Atmo + Q_Rerad(Temp) + Q_Conv(Temp) + Q_Evap(Temp) + Q_Solar
     Q_sum2(Temp) = Q_Ground(Temp)
    
-    V_profile(x,z,H) = V_prof(x,z,H)
     #BC1: T(y,z) at z = 0 is constant [Tin]
     #BC2: dT(y,z) at z = 0 includes the d2T/dy2, Vy*dT/dy, and Q terms (Qsol, Qrerad, Qlw, Qcov, Qevap)
     #BC3: dT(y,z) at z = H includes the d2T/dy2, Vy*dT/dy, and Q terms (Qground)
@@ -152,16 +130,16 @@ function HeatTransfer!(dX, T, Height, params, t)
  
         # BC 2
         dT[pos2idx(i, 0)] = (  k_water*(T[pos2idx(i-1, 0)] - 2*T[pos2idx(i, 0)] + T[pos2idx(min(Ny,i+1), 0)]) / dy^2    #conduction in y-dir
-                             + k_water*(T[pos2idx(i, 0)] + T[pos2idx(i,0+1)] - 2*T[pos2idx(i, 0)]) / dz[pos2idx(i,0)]^2               #conduction in z-dir at boundary
+                             + k_water*(T[pos2idx(i, 0)] + T[pos2idx(i,0+1)] - 2*T[pos2idx(i, 0)]) / dz(i,T[pos2idx(i, 0)],0)^2               #conduction in z-dir at boundary
                              + Q_sum1(T[pos2idx(i,0)]) * dy * W                                                         #heat generation at boundary
-                             - V_profile(i,0,Height[pos2idx(i,0)]) * ( T[pos2idx(i,0)] - T[pos2idx(i-1,0)]) / dy                                       #heat convection at boundary
+                             - V_profile(0, Hght(i,T[pos2idx(i, 0)],0)) * ( T[pos2idx(i,0)] - T[pos2idx(i-1,0)]) / dy                                       #heat convection at boundary
                              ) / (rho_water * cp_water)
 
         # BC 3
         dT[pos2idx(i, Nz)] = (  k_water*(T[pos2idx(i-1, Nz)] - 2*T[pos2idx(i, Nz)] + T[pos2idx(min(Ny,i+1), Nz)]) / dy^2 #conduction in y-dir
-                              + k_water*(T[pos2idx(i, Nz-1)] + T[pos2idx(i,Nz)] - 2*T[pos2idx(i, Nz)]) / dz[pos2idx(i,Nz)]^2            #conduction in z-dir at boundary
+                              + k_water*(T[pos2idx(i, Nz-1)] + T[pos2idx(i,Nz)] - 2*T[pos2idx(i, Nz)]) / dz(i,T[pos2idx(i, Nz)],0)^2            #conduction in z-dir at boundary
                               + Q_sum2(T[pos2idx(i,Nz)]) * dy * W                                                        #heat generation at boundary
-                              - V_profile(i,Nz*dz[pos2idx(i,Nz)],Height[pos2idx(i,Nz)]) * ( T[pos2idx(i,Nz)] - T[pos2idx(i-1,Nz)]) / dy                                        #heat convection at boundary
+                              - V_profile(dz(i,T[pos2idx(i, Nz)],0)*Nz, Hght(i,T[pos2idx(i, Nz)],0)) * ( T[pos2idx(i,Nz)] - T[pos2idx(i-1,Nz)]) / dy                                        #heat convection at boundary
                              ) / (rho_water*cp_water)
     end
 
@@ -169,17 +147,17 @@ function HeatTransfer!(dX, T, Height, params, t)
 
         dT[pos2idx(0, j)] = 0 #((k_water * (T[pos2idx(0, max(0,j-1))] - 2*T[pos2idx(0, j)] + T[pos2idx(Ny, min(Nz,j+1))]) / dz^2))/(rho_water*cp_water)
 
-        dT[pos2idx(Ny, j)] = (  k_water * (T[pos2idx(Ny, max(0,j-1))] - 2*T[pos2idx(Ny,j)] + T[pos2idx(Ny, min(Nz,j+1))]) / dz[pos2idx(Ny,j)]^2    #conduction in z-dir
+        dT[pos2idx(Ny, j)] = (  k_water * (T[pos2idx(Ny, max(0,j-1))] - 2*T[pos2idx(Ny,j)] + T[pos2idx(Ny, min(Nz,j+1))]) / dz(Ny,T[pos2idx(Ny, j)],0)^2    #conduction in z-dir
                               + k_water * (T[pos2idx(Ny-1, j)] - 2*T[pos2idx(Ny,j)] + T[pos2idx(Ny,j)]) / dy^2                      #conduction in y-dir at boundary
-                              - V_profile(Ny,min(j, Nz-1)*dz[pos2idx(Ny,j)],Height[pos2idx(Ny,j)]) * (T[pos2idx(Ny,j)] - T[pos2idx(Ny-1,j)]) / dy                                      #heat convection at boundary
+                              - V_profile(dz(Ny,T[pos2idx(Ny, j)],0)*j, Hght(Ny,T[pos2idx(Ny, j)],0)) * (T[pos2idx(Ny,j)] - T[pos2idx(Ny-1,j)]) / dy                                      #heat convection at boundary
                              ) / (rho_water*cp_water)
     end
 
     for i=1:Ny-1
         for j=1:Nz-1
             dT[pos2idx(i,j)] = (   k_water * (T[pos2idx(i-1, j)] - 2*T[pos2idx(i, j)] + T[pos2idx(i+1, j)]) / dy^2      #conduction in y-dir
-                                 + k_water * (T[pos2idx(i, j-1)] - 2*T[pos2idx(i, j)] + T[pos2idx(i, j+1)]) / dz[pos2idx(i,j)]^2      #conduction in z-dir
-                                 - V_profile(i,j*dz[pos2idx(i,j)],Height[pos2idx(i,j)]) * (T[pos2idx(i,j)] - T[pos2idx(i-1,j)]) / dy                         #heat convection
+                                 + k_water * (T[pos2idx(i, j-1)] - 2*T[pos2idx(i, j)] + T[pos2idx(i, j+1)]) / dz(i,T[pos2idx(i, j)],0)^2      #conduction in z-dir
+                                 - V_profile(dz(i,T[pos2idx(i, j)],0)*j, Hght(i,T[pos2idx(i, j)],0)) * (T[pos2idx(i,j)] - T[pos2idx(i-1,j)]) / dy                         #heat convection
                                ) / (rho_water*cp_water)
         end
     end
