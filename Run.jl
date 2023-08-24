@@ -1,5 +1,4 @@
 # the Revise package allows you to rerun code after making variable/function/method changes without re-compiling everything
-cd("C:/Users/slant/OneDrive/Desktop/Julia_2")
 using Revise
 using Debugger
 

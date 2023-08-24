@@ -1,4 +1,4 @@
-cd("C:/Users/slant/OneDrive/Desktop/Julia_2")
+
 ## LOAD PARAMETERS
 ## Options:
 #   Load default parameters
@@ -19,7 +19,7 @@ function LoadDefaultParameters(filesuffix)
     reference_pressure = 101315.0                                       # Pascals
     gas_constant = 8.31446261815324                                     # J / K / mole
     stefan_boltzmann_constant = 5.67037442E-08                          # W / m^2 / K^4
-    acceleration_gravity = 9.81                                         # m/s2
+    acceleration_gravity = 9.81*(3600^2)                                        # m/hr2
     # Air Properties
     density_air(T) = reference_pressure ./ (287.058 .* T)                 # kg/m3
     dynamic_viscosity_air(T) = 1.458E-06 .* (T.^1.5) ./ (T .+ 110.4)        # Pa sec [kg/m/sec]
@@ -33,15 +33,22 @@ function LoadDefaultParameters(filesuffix)
     density_water_20degC = 998.2071                                             # kg / m^3
     expansion_coefficient_water = 0.0002                                        # 1/degC
     density_water(T) = density_water_20degC ./ (1 .+ expansion_coefficient_water .* (T .- reference_temperature))   #kg/m^3
-    dynamic_viscosity_water(T) = 2.414E−05 .* 10^( 247.8 ./ (T .+ 133.15))         # Pa sec [kg/m/sec]
-    specific_heat_capacity_water(T) = 4184.0                                    # J/kg/K
+    dynamic_viscosity_water(T) = (2.414E−05 .* 10^( 247.8 ./ (T .+ 133.15)))*3600         # Pa sec [kg/m/hr]
+        #Salinity Properties
+    A(S) = 5.328 - 9.76 * 10 ^ (-2) * S + 4.04*10^(-4)*(S)^ 2 #unitless
+    B(S) = -6.913 * 10 ^ (-3) + 7.351 * 10 ^ (-4) * (S) - 3.15*10^(-6)*(S)^2 #unitless
+    C(S) = 9.6 * 10 ^ (-6) - 1.927 * 10 ^ (-6) * (S) + 8.23 * 10^(-9) *(S)^2 #unitless
+    D(S) = 2.5 * 10 ^ (-9) + 1.666 * 10 ^ (-9) * (S) - 7.125 * 10^(-12)*(S)^2 #unitless
+    specific_heat_capacity_solution(T,S) = 1000*(A(S) + B(S)*T + C(S)*(T^2) + D(S)*(T^3)) #J/kg/K
+    specific_heat_capacity_water(T) = specific_heat_capacity_solution(T,0) #J/kg/K                                # J/kg/K
     thermal_conductivity_water(T) = 0.565464 .+ 1.756E-03 .* T .- 6.46E-06 .* T.^2   # J/m/K/sec
-    solar_reflectance_water = 0.1357                                            # fraction of light reflected
+    solar_reflectance_water = 0.1357 # fraction of light reflected
     diffusion_coeff_water_air(T) = 22.5E-06 .* ( (T .+ 273.15) ./ 273.15).^1.8        # m^2 / sec
     saturated_vapor_pressure_water_air(T) = (exp(77.3450+0.0057*T-7235/T))/(T^8.2)  #Pascals
     heat_vaporization_water(T) = 2430159                                        # J / kg, T = 30 degC            [40660 * ( (647.3 - (T + 273.15)) / (647.3 - 373.2))^0.38 #J/mole, but isn't very accurate]
     emissivity_water = 0.97                                                     # dimensionless
     molecular_weight_water = 0.01801528                                         # kg/mole
+    density_water_vapor(T) = 0.804 #kg/m3
     
     # CO2 Properties
     diffusion_coeff_co2_water(T) = (0.0816 .* T .- 22.601) .* 1.0E-09              # m^2 / sec [equation fitted based on data in https://pubs.acs.org/doi/10.1021/je401008s]
@@ -79,20 +86,16 @@ function LoadDefaultParameters(filesuffix)
     reactor_length = 200.0                              # meters
     reactor_width =  20.0                               # meters
     reactor_initial_liquid_level = 2.0                 # meters
-    reactor_depth = 2E-06 * reactor_initial_liquid_level    # meters
+    reactor_depth = 6.98   # meters
     reactor_incline = (asin(reactor_depth/reactor_length))  # radians
     @show reactor_incline
+
     ## River Reactor Operating Parameters
-    input_volumetric_flow_rate = 5000     # m^3/hour
-    input_max_flow_velocity = 2.0 * input_volumetric_flow_rate / reactor_width / reactor_initial_liquid_level   # m/hour
-    input_average_flow_velocity = input_max_flow_velocity / 2.0 #m/hr
-    change_potential_energy = -2*sin(reactor_incline)*(reactor_length/num_odes_y)*acceleration_gravity*(3600^2) #in m2/hr2
-    average_flow_velocity(x) = sqrt((input_average_flow_velocity)^2+(change_potential_energy*x)) #average_flow_velocity constant despite height change
-    @show average_flow_velocity(0)
-    max_flow_velocity(x) = 2.0*average_flow_velocity(x) #same despite height change
-    initial_height_profile(x) = (input_average_flow_velocity*reactor_initial_liquid_level)/average_flow_velocity(x)
-    velocity_profile(x,z,H) = max_flow_velocity(x)*(1-(z/H)) #z = dz(x)*z
-    @show initial_height_profile(0)
+    velocity_profile(z, H, T) = (density_water(T)*acceleration_gravity*tan(reactor_incline)*z*(2*H-z))/(2*dynamic_viscosity_water(T)) #m/hr, z = dz(i)*j
+    average_flow_velocity(H, T) = ((density_water(T)*acceleration_gravity*tan(reactor_incline)*H^2)/(3*dynamic_viscosity_water(T))) #m/hr
+    volumetric_flow_rate(H,T) = reactor_width*H*average_flow_velocity(H,T) #m3/hr
+    
+    
       
     input_hydraulic_diameter = 4 * (reactor_width * reactor_initial_liquid_level) / (reactor_width + 2 * reactor_initial_liquid_level) # meters
     input_temperature = 293.15                          # Kelvin
@@ -109,7 +112,7 @@ function LoadDefaultParameters(filesuffix)
     photosynthetic_efficiency = 0.025                   # fraction of sunlight converted to chemical energy during photosynthesis
     threshold_dissolved_co2_growth = 0.5                # kg CO2 / m^3 water, minimum dissolved CO2 concentration before growth begins to slow
     
-    Vol(dz) = (reactor_length/num_odes_y)*dz*reactor_width
+    Vol(dz) = (reactor_length/num_odes_y)*dz*reactor_width #m3
     Iave(M_biomass_z, GHI, z, dz) = GHI .* 0.45 .* (1 - min(sum(M_biomass_z[1:z]/(Vol(dz))).*dz./max_biomass_concentration,1.0) ) #
     phiL(M_biomass_z, GHI, z, dz) = Iave(M_biomass_z, GHI, z, dz) .* exp(1 - Iave(M_biomass_z, GHI, z, dz)./max_biomass_light_saturation) ./ max_biomass_light_saturation
     co2_availability_factor(C_co2, dz) = min.(C_co2/Vol(dz), threshold_dissolved_co2_growth) ./ threshold_dissolved_co2_growth
@@ -119,6 +122,32 @@ function LoadDefaultParameters(filesuffix)
     ## Mass Transfer Properties
     biomass_diffusion_coefficient_y = 1.0e-9 * 3600.0           #m^2/hour
     biomass_diffusion_coefficient_z = 1.0e-9 * 3600.0 * 100.0   #m^2/hour [100-fold higher in z-direction, due to added convection]
+
+    ## Evaporation and Height Properties
+    evaporation_constant(W) = 25 +19*W #kg dry air/m2-hr
+    ambient_humidity_ratio(R_H, P) = 0.62198*(P*(R_H/100))/(reference_pressure-(P*(R_H/100))) #kg H2O/ kg dry air
+    surface_humidity_ratio(T) = 0.62198*(saturated_vapor_pressure_water_air(T)/(reference_pressure-saturated_vapor_pressure_water_air(T))) #kg H2O/kg dry air
+    evaporation_mass_flux(T,W,R_H,P) = -evaporation_constant(W)*(surface_humidity_ratio(T)-ambient_humidity_ratio(R_H, P)) #kg H2O/m2-hr
+    evaporation_heat_flux(T,W,R_H,P) = evaporation_mass_flux(T,W,R_H,P)*heat_vaporization_water(T) #J/hr-m2
+    density_solution(T, S) = density_water(T) + S #kg/m3
+    dVavgdx(T,S,R_H,W,P) = -((density_water(T)-density_water_vapor(T))*density_water(T)*specific_heat_capacity_water(T)*evaporation_mass_flux(T,W,R_H,P))/(density_solution(T,S)*density_water_vapor(T)*density_solution(T,S)*specific_heat_capacity_solution(T, S)) #hr-1
+    height(x,T,S,W,R_H,P,H) = 1/(((dynamic_viscosity_water(T)/density_solution(T,S))*(evaporation_mass_flux(T,W,R_H,P)-dVavgdx(T,S,R_H,W,P)*density_solution(T,S))*(reactor_length/num_odes_y)*x)/(density_solution(T,S)*acceleration_gravity*tan(reactor_incline)) + (1/H)) #m
+    @show density_water_vapor(298)
+    @show saturated_vapor_pressure_water_air(298)
+    @show density_solution(298,0)
+    @show density_air(298)
+    @show evaporation_mass_flux(298,1,44,saturated_vapor_pressure_water_air(298))
+    @show -dVavgdx(298,0,44,1,saturated_vapor_pressure_water_air(298))
+
+
+    #change in Vavg with dx, derived from Wrobel, 2006
+
+    
+
+    #Sources
+    #K.G. Nayar, M.H. Sharqawy, L.D. Banchik, and J.H. Lienhard V, "Thermophysical properties of seawater: A review and new correlations that include pressure dependence," Desalination, Vol. 390, pp.1-24, 2016. doi:10.1016/j.desal.2016.02.024 (preprint)
+    #Mostafa H. Sharqawy, John H. Lienhard V, and Syed M. Zubair, "Thermophysical properties of seawater: A review of existing correlations and data," Desalination and Water Treatment, Vol. 16, pp.354-380, April 2010. (PDF file which includes corrections through June 2017.)
+
 
     params = (; num_odes_y,
                 num_odes_z,
@@ -138,6 +167,11 @@ function LoadDefaultParameters(filesuffix)
                 molecular_weight_water,
                 density_water,
                 dynamic_viscosity_water,
+                A,
+                B,
+                C,
+                D,
+                specific_heat_capacity_solution,                          
                 specific_heat_capacity_water,
                 thermal_conductivity_water,
                 solar_reflectance_water,
@@ -145,6 +179,7 @@ function LoadDefaultParameters(filesuffix)
                 saturated_vapor_pressure_water_air,
                 heat_vaporization_water,
                 emissivity_water,
+                density_water_vapor,
                 diffusion_coeff_co2_water,
                 solubility_co2_water,
                 molecular_weight_co2,
@@ -158,16 +193,11 @@ function LoadDefaultParameters(filesuffix)
                 reactor_length,
                 reactor_width,
                 reactor_initial_liquid_level,
-                reactor_incline,
                 reactor_depth,
-                input_volumetric_flow_rate,
-                input_max_flow_velocity,
-                input_average_flow_velocity,
-                change_potential_energy,
-                average_flow_velocity,
-                max_flow_velocity,
-                initial_height_profile,
+                reactor_incline,
                 velocity_profile,
+                average_flow_velocity,
+                volumetric_flow_rate,
                 input_hydraulic_diameter,
                 input_reynolds_number,
                 input_temperature,
@@ -185,6 +215,14 @@ function LoadDefaultParameters(filesuffix)
                 co2_per_biomass,
                 biomass_diffusion_coefficient_y,
                 biomass_diffusion_coefficient_z,
+                evaporation_constant,
+                ambient_humidity_ratio,
+                surface_humidity_ratio,
+                evaporation_mass_flux,
+                evaporation_heat_flux,
+                density_solution,
+                dVavgdx,
+                height,
                 )
 
     # Write parameters to file
