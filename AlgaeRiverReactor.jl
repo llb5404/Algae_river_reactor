@@ -30,16 +30,16 @@ module AlgaeRiverReactor
         Nz = params.num_odes_z
         Nelements = (Ny+1) * (Nz+1)
 
-        M_biomass = X[1:Nelements]
+        C_biomass = X[1:Nelements]
         Temperature = X[Nelements+1:2*Nelements]
         CO2 = X[2*Nelements+1:3*Nelements]
         Height = X[3*Nelements+1:4*Nelements]
     
         # more ....
 
-        PDE_AlgaeBiomass!(dX, M_biomass, Temperature, Height, params, t)      # changes dX
+        PDE_AlgaeBiomass!(dX, C_biomass, Temperature, Height, params, t)      # changes dX
         HeatTransfer!(dX, Temperature, Height, params, t)          # changes dX
-        PDE_CO2!(dX, CO2, Height, M_biomass, Temperature, params, t)            # changes dX
+        PDE_CO2!(dX, CO2, Height, C_biomass, Temperature, params, t)            # changes dX
         HeightChange!(dX, Height, Temperature, params, t)
         #dX is changed directly by the above functions
 
@@ -84,9 +84,9 @@ module AlgaeRiverReactor
     
 
         #ICs: initial conditions at t = 0
-        M_biomass_o = zeros( (Ny+1) * (Nz+1), 1)
-        M_biomass_o[pos2idx(0,0:Nz)] .= C_biomass_in*(W*dy*dz)
-        @show M_biomass_o[pos2idx(0,0)]
+        C_biomass_o = zeros( (Ny+1) * (Nz+1), 1)
+        C_biomass_o[pos2idx(0,0:Nz)] .= C_biomass_in
+    
 
         Temperature_o = ones( (Ny+1) * (Nz+1), 1) .* Temperature_in
         CO2_o = ones( (Ny+1) * (Nz+1), 1) .* CO2_in
@@ -108,7 +108,7 @@ module AlgaeRiverReactor
         @show size(H_o)
         
 
-        Xo = [M_biomass_o; Temperature_o; CO2_o; H_o]
+        Xo = [C_biomass_o; Temperature_o; CO2_o; H_o]
         #@show size(Xo)
         @show tspan
 
@@ -142,6 +142,7 @@ module AlgaeRiverReactor
         Plot_Temperature_Profile(Tout, T, params, filesuffix)
         Plot_CO2_Profile(CO2_out, Tout, T, params, filesuffix)
         Plot_Height_Profile(Tout, T, params, filesuffix)
+        Plot_Salinity_Profile(Tout, T, params, filesuffix)
 
     end
 

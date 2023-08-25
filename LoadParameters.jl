@@ -32,7 +32,7 @@ function LoadDefaultParameters(filesuffix)
     # Water Properties
     density_water_20degC = 998.2071                                             # kg / m^3
     expansion_coefficient_water = 0.0002                                        # 1/degC
-    density_water(T) = density_water_20degC ./ (1 .+ expansion_coefficient_water .* (T .- reference_temperature))   #kg/m^3
+    density_water(T) = density_water_20degC ./ (1 .+ expansion_coefficient_water .* (T .- (reference_temperature+273)))   #kg/m^3
     dynamic_viscosity_water(T) = (2.414E−05 .* 10^( 247.8 ./ (T .+ 133.15)))*3600         # Pa sec [kg/m/hr]
         #Salinity Properties
     A(S) = 5.328 - 9.76 * 10 ^ (-2) * S + 4.04*10^(-4)*(S)^ 2 #unitless
@@ -112,11 +112,10 @@ function LoadDefaultParameters(filesuffix)
     photosynthetic_efficiency = 0.025                   # fraction of sunlight converted to chemical energy during photosynthesis
     threshold_dissolved_co2_growth = 0.5                # kg CO2 / m^3 water, minimum dissolved CO2 concentration before growth begins to slow
     
-    Vol(dz) = (reactor_length/num_odes_y)*dz*reactor_width #m3
-    Iave(M_biomass_z, GHI, z, dz) = GHI .* 0.45 .* (1 - min(sum(M_biomass_z[1:z]/(Vol(dz))).*dz./max_biomass_concentration,1.0) ) #
-    phiL(M_biomass_z, GHI, z, dz) = Iave(M_biomass_z, GHI, z, dz) .* exp(1 - Iave(M_biomass_z, GHI, z, dz)./max_biomass_light_saturation) ./ max_biomass_light_saturation
-    co2_availability_factor(C_co2, dz) = min.(C_co2/Vol(dz), threshold_dissolved_co2_growth) ./ threshold_dissolved_co2_growth
-    biomass_specific_growth_rate(M_biomass_z, GHI, z, dz, C_co2) = max_biomass_specific_growth_rate .* phiL(M_biomass_z, GHI, z, dz) .* co2_availability_factor(C_co2,dz)
+    Iave(C_biomass_z, GHI, z, dz) = GHI .* 0.45 .* (1 - min(sum(C_biomass_z[1:z]).*dz./max_biomass_concentration,1.0) ) #
+    phiL(C_biomass_z, GHI, z, dz) = Iave(C_biomass_z, GHI, z, dz) .* exp(1 - Iave(C_biomass_z, GHI, z, dz)./max_biomass_light_saturation) ./ max_biomass_light_saturation
+    co2_availability_factor(C_co2) = min.(C_co2, threshold_dissolved_co2_growth) ./ threshold_dissolved_co2_growth
+    biomass_specific_growth_rate(C_biomass_z, GHI, z, dz, C_co2) = max_biomass_specific_growth_rate .* phiL(C_biomass_z, GHI, z, dz) .* co2_availability_factor(C_co2)
     co2_per_biomass = 0.70   #based on 2.661 kg CO2 emitted when burning 1 gallon of algae (about 3.79 kg)
 
     ## Mass Transfer Properties
@@ -138,6 +137,12 @@ function LoadDefaultParameters(filesuffix)
     @show density_air(298)
     @show evaporation_mass_flux(298,1,44,saturated_vapor_pressure_water_air(298))
     @show -dVavgdx(298,0,44,1,saturated_vapor_pressure_water_air(298))
+
+    ## Salinity Properties
+    
+    salinity_o = 1023.6 - density_water(298) #kg/m3, obtained from "density of seawater @ 25 oC
+    volumetric_flow_rate_o(T_a) = volumetric_flow_rate(reactor_initial_liquid_level,T_a) #kg/m3, T = Tamb, K
+    salinity(T,T_a,W,R_H,P,x) = ((density_water(T)*volumetric_flow_rate_o(T_a)*salinity_o)/(density_water(T)*volumetric_flow_rate_o(T_a)-evaporation_mass_flux(T,W,R_H,P)*reactor_width*x*(reactor_length/num_odes_y)))*density_water(T)
 
 
     #change in Vavg with dx, derived from Wrobel, 2006
