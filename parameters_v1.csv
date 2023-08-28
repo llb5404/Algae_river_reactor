@@ -57,7 +57,6 @@ max_biomass_concentration, 10.0
 max_biomass_light_saturation, 196.93654266958424
 photosynthetic_efficiency, 0.025
 max_biomass_specific_growth_rate, 0.23104906018664842
-Vol, Vol
 Iave, Iave
 phiL, phiL
 co2_availability_factor, co2_availability_factor
@@ -73,3 +72,4 @@ evaporation_heat_flux, evaporation_heat_flux
 density_solution, density_solution
 dVavgdx, dVavgdx
 height, height
+salinity, salinity

@@ -80,18 +80,26 @@ function Plot_Biomass_Profile(Mout, Tout, T, params, filesuffix)
     Hght(x,T,S,WNDSPD,RH,P) = params.height(x,T,S,WNDSPD,RH,P,H_o)
     dz(x,T,S,WNDSPD,RH,P) = Hght(x,T,S,WNDSPD,RH,P)/Nz
 
-    
+    Cout = zeros(TL, Nelements)
+
+    for i= 1:TL
+        for j = 0:Ny
+            for k = 0:Nz
+                Cout[i,pos2idx(j,k)] = Mout[i,pos2idx(j,k)]/(dy*W*dz(j,Tout[i,pos2idx(j,k)],0,WNDSPDout[i],RHout[i],Pa_out[i])) #kg/m3
+            end
+        end
+    end
 
     Prod_out = zeros(TL,Nelements)
     for i = 1:TL
         for j = 0:Ny
             for k = 0:Nz
-                Prod_out[i,pos2idx(j,k)] = ((Mout[i,pos2idx(j,k)]- Cinit)* Q(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])* 24.0* 1000)/(W*L)
+                Prod_out[i,pos2idx(j,k)] = ((Cout[i,pos2idx(j,k)]- Cinit)* Q(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])* 24.0* 1000)/(W*L)
             end
         end
     end
 
-    (maxval, maxpos) = findmax(Mout[TL,:])
+    (maxval, maxpos) = findmax(Cout[TL,:])
     (Ny_max, Nz_max) = idx2pos(maxpos)
 
     P(C) = Statistics.mean(C[:, pos2idx(Ny,0:Nz)], dims = 2)
@@ -100,8 +108,8 @@ function Plot_Biomass_Profile(Mout, Tout, T, params, filesuffix)
 
 
 
-    p1 = plot(Y,Mout[TL, pos2idx(0:Ny,0)] * 1000.0, xlabel = "Length [m]", ylabel = "Algae Cell Density (g/m^3)", title="Algae Surface Cell Density", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
-    p2 = plot(Y,Mout[TL, pos2idx(0:Ny,Nz)] * 1000.0, xlabel = "Length [m]", ylabel = "Algae Cell Density (g/m^3)", title="Algae Floor Cell Density", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
+    p1 = plot(Y,Cout[TL, pos2idx(0:Ny,0)] * 1000.0, xlabel = "Length [m]", ylabel = "Algae Cell Density (g/m^3)", title="Algae Surface Cell Density", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
+    p2 = plot(Y,Cout[TL, pos2idx(0:Ny,Nz)] * 1000.0, xlabel = "Length [m]", ylabel = "Algae Cell Density (g/m^3)", title="Algae Floor Cell Density", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p3 = plot(T, P(Prod_out), xlabel = "Time [hours]", ylabel = "Algae Productivity (g/m^2/day)", title = "Net Continuous Biomass Productivity", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p4 = plot(T, GHIout, xlabel = "Time [hours]", ylabel = "Global Horizontal Irradiance (GHI) [W/m^2]", title = "Solar Energy", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p = plot(p1, p2, p3, p4, layout=(4,1), legend=false, size=(1200,1200))
@@ -109,10 +117,10 @@ function Plot_Biomass_Profile(Mout, Tout, T, params, filesuffix)
     savefig(p, "Biomass_AlgaeRiverReactor_$filesuffix.ps")
     Average_Continuous_Productivity = Statistics.mean(P(Mout)[max(1,TL-20):TL])
     # Mout2D(z, y), z = 0 is the surface and z = H is the bottom. For plotting, we will invert the z-scale so that z = 0 is the bottom and z = H is the surface.
-    Mout2D = zeros(Nz+1, Ny+1)
+    Cout2D = zeros(Nz+1, Ny+1)
     for i in 0:Ny
         for j in 0:Nz
-            Cout2D[j+1,i+1] = Mout[TL, pos2idx(i,j)]
+            Cout2D[j+1,i+1] = Cout[TL, pos2idx(i,j)]
         end
     end
     q = heatmap(Y, Z, log10.(Cout2D * 1000.0),
@@ -257,7 +265,7 @@ function Plot_CO2_Profile(CO2_out, Tout, T, params, filesuffix)
     (maxval, maxpos) = findmax(CO2_out[TL,:])
     (Ny_max, Nz_max) = idx2pos(maxpos)
 
-    CO2C_out = zeros(TL, Nelements)
+
 
     H_o = params.reactor_initial_liquid_level
 
@@ -279,10 +287,12 @@ function Plot_CO2_Profile(CO2_out, Tout, T, params, filesuffix)
     Hght(x,T,S,WNDSPD,RH,P) = params.height(x,T,S,WNDSPD,RH,P,H_o)
     dz(x,T,S,WNDSPD,RH,P) = Hght(x,T,S,WNDSPD,RH,P)/Nz
 
+    CO2C_out = zeros(TL, Nelements)
+
     for i= 1:TL
         for j = 0:Ny
             for k = 0:Nz
-                CO2C_out[i,pos2idx(j,k)] = CO2_out[i,pos2idx(j,k)]/(dy*W*(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,k)],WNDSPDout[i],RHout[i],Pa_out[i])/Nz))
+                CO2C_out[i,pos2idx(j,k)] = CO2_out[i,pos2idx(j,k)]/(dy*W*(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])/Nz))
             end
         end
     end
@@ -522,6 +532,6 @@ function Plot_Salinity_Profile(Tout, T, params, filesuffix)
     p2 = plot(T, P(Sout), xlabel = "Time [hours]", ylabel = "Average Salinity (kg/m^3)", title = "Average Reactor Salinity over Time", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
 
     p = plot(p1, p2, layout=(2,1), legend=false, size=(1200,1200))
-    png("Biomass_AlgaeRiverReactor_$filesuffix")
-    savefig(p, "Biomass_AlgaeRiverReactor_$filesuffix.ps")
+    png("Salinity_AlgaeRiverReactor_$filesuffix")
+    savefig(p, "Salinity_AlgaeRiverReactor_$filesuffix.ps")
 end

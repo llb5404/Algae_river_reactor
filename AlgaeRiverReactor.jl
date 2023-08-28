@@ -80,16 +80,18 @@ module AlgaeRiverReactor
         molecular_weight_co2 = params.molecular_weight_co2
         molecular_weight_water = params.molecular_weight_water
         CO2_in = S_co2(Temperature_in) .* density_water(Temperature_in) .* molecular_weight_co2 ./ molecular_weight_water
+        @show CO2_in
         H_init = params.reactor_initial_liquid_level #reactor initial liquid level, m
     
 
         #ICs: initial conditions at t = 0
         C_biomass_o = zeros( (Ny+1) * (Nz+1), 1)
-        C_biomass_o[pos2idx(0,0:Nz)] .= C_biomass_in
+        C_biomass_o[pos2idx(0,0:Nz)] .= C_biomass_in*(W*dy*dz)
+
     
 
         Temperature_o = ones( (Ny+1) * (Nz+1), 1) .* Temperature_in
-        CO2_o = ones( (Ny+1) * (Nz+1), 1) .* CO2_in
+        CO2_o = (ones( (Ny+1) * (Nz+1), 1) .* CO2_in)*(W*dy*dz)
         H_o = ones((Ny+1)*(Nz+1), 1).*H_init
 
 

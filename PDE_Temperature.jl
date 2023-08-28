@@ -61,6 +61,7 @@ function HeatTransfer!(dX, T, Height, params, t)
 
     Hght(x,T,S) = params.height(x,T,S,WNDSPD,RH,P_a,H_o)
     dz(x,T,S) = Hght(x,T,S)/Nz
+   
     
 
     #constants in all heat flux functions
@@ -161,6 +162,7 @@ function HeatTransfer!(dX, T, Height, params, t)
                                ) / (rho_water*cp_water)
         end
     end
+
 
     #@show dT
     @views dX[Nelements+1:2*Nelements] .= dT        # order matters!  The @views operator takes a slice out of an array without making a copy.
