@@ -35,6 +35,7 @@ function LoadDefaultParameters(filesuffix)
     density_water(T) = density_water_20degC ./ (1 .+ expansion_coefficient_water .* (T .- (reference_temperature+273)))   #kg/m^3
     dynamic_viscosity_water(T) = (2.414E−05 .* 10^( 247.8 ./ (T .-140)))         # Pa sec [kg/m/hr]
     @show dynamic_viscosity_water(298)
+    kinematic_viscosity_water(T) = dynamic_viscosity_water(T)/density_water(T) #m2/hr
         #Salinity Properties
     A(S) = 5.328 - 9.76 * 10 ^ (-2) * S + 4.04*10^(-4)*(S)^ 2 #unitless
     B(S) = -6.913 * 10 ^ (-3) + 7.351 * 10 ^ (-4) * (S) - 3.15*10^(-6)*(S)^2 #unitless
@@ -89,19 +90,22 @@ function LoadDefaultParameters(filesuffix)
     reactor_length = 200.0                              # meters
     reactor_width =  20.0                               # meters
     reactor_initial_liquid_level = 2.0                 # meters
-    reactor_depth = 6.98   # meters
+    reactor_depth = 3.0   # meters
     reactor_incline = (asin(reactor_depth/reactor_length))  # radians
     @show reactor_incline
 
     ## River Reactor Operating Parameters
-    velocity_profile(z, H, T) = (density_water(T)*acceleration_gravity*sin(reactor_incline)*(z*H+0.5*z^2))/(dynamic_viscosity_water(T)) #m/hr, z = dz(i)*j
-    average_flow_velocity(H, T) = ((density_water(T)*acceleration_gravity*tan(reactor_incline)*H^2)/(3*dynamic_viscosity_water(T))) #m/hr
+    hydraulic_diameter(H) = 4 * (reactor_width * H) / (reactor_width + 2 * H) #m
+    global_shear_velocity(H) = (acceleration_gravity*hydraulic_diameter(H)*tan(reactor_incline))^(1/2) #m/hr
+    local_shear_velocity(H) = (acceleration_gravity*H*tan(reactor_incline))^(1/2) #m/hr
+    boundary_layer_height(H,T) = kinematic_viscosity_water(T)/local_shear_velocity(H) #m
+    velocity_profile(z,H,T) = global_shear_velocity(H)*(1/0.4)*log((z+boundary_layer_height(H,T))/boundary_layer_height(H,T)) #m/hr
+    ## we assume log law to dominate due to aspect ratio of channel (Ar>>5)
+    ## Han et al., (2017) https://www.hindawi.com/journals/mpe/2018/6491501/ 
+    average_flow_velocity(H, T) = global_shear_velocity(H)*(1/0.4)*(log(H)-log(boundary_layer_height(H,T))-1) #m/hr
     volumetric_flow_rate(H,T) = reactor_width*H*average_flow_velocity(H,T) #m3/hr
-    @show density_water(298)
-    @show sin(reactor_incline)
-    @show velocity_profile(1.0,2.0,298)
-
-    ## http://abe-research.illinois.edu/courses/abe459/html/velocity%20profiles.pdf
+    reynolds_number(H,T) = average_flow_velocity(H,T) .* density_water(T) .* hydraulic_diameter(H) ./ dynamic_viscosity_water(T)
+    @show velocity_profile(2.0,2.0,298)
     
     
       
@@ -116,21 +120,37 @@ function LoadDefaultParameters(filesuffix)
     input_biomass_concentration = 10.0 / 1000.0         # kg/m^3
     max_biomass_concentration = 10000.0 / 1000.0        # kg/m^3 where light is 100% absorbed
     max_biomass_light_saturation = 900.0 / 4.57         # 900 μmol m−2 s−1 converted to W/m^2
-    max_biomass_specific_growth_rate = log(2.0) / 3.0   # 1 / hour
+    max_biomass_specific_growth_rate = 6.75/24   # 1 / hour (obtained from Krishnan at T_opt, 0 salinity)
+
+    salinity_factor(S) = -6E-05*S^2 + 0.0007*S + 1.0078 #unitless, S in kg/m3
+    ## obtained from 2-degree polynomial fit of data obtained from Krishnan et al.
+    T_opt = 308 #in K, optimum temperature
+    T_min = 277.2 #in K, minimum temperature
+    T_max = 320 #in K, maximum temperature
+    temperature_factor_g(T) = (T_opt-T_max)*(T-T_opt) #unitless
+    temperature_factor_f(T) = (T_opt-T_max)*(T_opt+T_min-2*T) #unitless
+    temperature_factor(T) = ((T-T_max)*(T-T_min)^2)/((T_opt-T_min)*(temperature_factor_g(T)-temperature_factor_f(T))) #unitless
+    @show temperature_factor(308)
+    ## opt, min, max temperatures given by Krishnan et al 
+    ##temperature factor obtained from model given by Greene et al https://www.osti.gov/servlets/purl/1806213
+
+        
+
     photosynthetic_efficiency = 0.025                   # fraction of sunlight converted to chemical energy during photosynthesis
     threshold_dissolved_co2_growth = 0.5                # kg CO2 / m^3 water, minimum dissolved CO2 concentration before growth begins to slow
     Vol(dz) = (reactor_length/num_odes_y)*dz*reactor_width #m3
     Iave(M_biomass_z, GHI, z, dz) = GHI .* 0.45 .* (1 - min(sum(M_biomass_z[1:z]/(Vol(dz))).*dz./max_biomass_concentration,1.0) ) #
     phiL(M_biomass_z, GHI, z, dz) = Iave(M_biomass_z, GHI, z, dz) .* exp(1 - Iave(M_biomass_z, GHI, z, dz)./max_biomass_light_saturation) ./ max_biomass_light_saturation
     co2_availability_factor(C_co2, dz) = min.(C_co2/Vol(dz), threshold_dissolved_co2_growth) ./ threshold_dissolved_co2_growth
-    biomass_specific_growth_rate(M_biomass_z, GHI, z, dz, C_co2) = max_biomass_specific_growth_rate .* phiL(M_biomass_z, GHI, z, dz) .* co2_availability_factor(C_co2,dz)
+    biomass_specific_growth_rate(T, S, M_biomass_z, GHI, z, dz, C_co2) = max_biomass_specific_growth_rate .* phiL(M_biomass_z, GHI, z, dz) .* co2_availability_factor(C_co2,dz).*temperature_factor(T).*salinity_factor(S)
     co2_per_biomass = 0.70   #based on 2.661 kg CO2 emitted when burning 1 gallon of algae (about 3.79 kg)
-
+    
     ## Mass Transfer Properties
     biomass_diffusion_coefficient_y = 1.0e-9 * 3600.0           #m^2/hour
     biomass_diffusion_coefficient_z = 1.0e-9 * 3600.0 * 100.0   #m^2/hour [100-fold higher in z-direction, due to added convection]
 
     ## Evaporation and Height Properties
+    
     evaporation_constant(W) = 25 +19*W #kg dry air/m2-hr
     ambient_humidity_ratio(R_H, P) = 0.62198*(P*(R_H/100))/(reference_pressure-(P*(R_H/100))) #kg H2O/ kg dry air
     surface_humidity_ratio(T) = 0.62198*(saturated_vapor_pressure_water_air(T)/(reference_pressure-saturated_vapor_pressure_water_air(T))) #kg H2O/kg dry air
@@ -139,21 +159,13 @@ function LoadDefaultParameters(filesuffix)
     density_solution(T, S) = density_water(T) + S #kg/m3
     dVavgdx(T,S,R_H,W,P) = -((density_water(T)-density_water_vapor(T))*density_water(T)*specific_heat_capacity_water(T)*evaporation_mass_flux(T,W,R_H,P))/(density_solution(T,S)*density_water_vapor(T)*density_solution(T,S)*specific_heat_capacity_solution(T, S)) #hr-1
     height(x,T,S,W,R_H,P,H) = 1/(((dynamic_viscosity_water(T)/density_solution(T,S))*(evaporation_mass_flux(T,W,R_H,P)-dVavgdx(T,S,R_H,W,P)*density_solution(T,S))*(reactor_length/num_odes_y)*x)/(density_solution(T,S)*acceleration_gravity*tan(reactor_incline)) + (1/H)) #m
-    @show density_water_vapor(298)
-    @show saturated_vapor_pressure_water_air(298)
-    @show density_solution(298,0)
-    @show density_air(298)
-    @show evaporation_mass_flux(298,1,44,saturated_vapor_pressure_water_air(298))
-    @show -dVavgdx(298,0,44,1,saturated_vapor_pressure_water_air(298))
+  
 
     ## Salinity Properties
     
     salinity_o = (1023.6 - density_water(298))/density_water(298) #kg salt/kg water, obtained from "density of seawater @ 25 oC
     volumetric_flow_rate_o(T_a) = volumetric_flow_rate(reactor_initial_liquid_level,T_a) #kg/m3, T = Tamb, K
     salinity(T,T_a,W,R_H,P,x) = ((density_water(T)*volumetric_flow_rate_o(T_a)*salinity_o)/(density_water(T)*volumetric_flow_rate_o(T_a)-evaporation_mass_flux(T,W,R_H,P)*reactor_width*x*(reactor_length/num_odes_y)))*density_water(T) #kg/m3
-    #test salinity
-    @show salinity_o
-    @show salinity(293,298,1,44,saturated_vapor_pressure_water_air(298),10)
 
 
     #change in Vavg with dx, derived from Wrobel, 2006
@@ -214,6 +226,7 @@ function LoadDefaultParameters(filesuffix)
                 velocity_profile,
                 average_flow_velocity,
                 volumetric_flow_rate,
+                reynolds_number,
                 input_hydraulic_diameter,
                 input_reynolds_number,
                 input_temperature,

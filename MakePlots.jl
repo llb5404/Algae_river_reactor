@@ -14,6 +14,7 @@ function Plot_Biomass_Profile(Mout, Tout, T, params, filesuffix)
     data_begin = params.data_begin
 
     Q(H,T) = params.volumetric_flow_rate(H,T)       # m^3/hour
+    Re(H,T) = params.reynolds_number(H,T)
     V_prof = params.velocity_profile
     L = params.reactor_length                   # m
     W = params.reactor_width                    # m
@@ -99,10 +100,27 @@ function Plot_Biomass_Profile(Mout, Tout, T, params, filesuffix)
         end
     end
 
+    V_prof_out = zeros(TL,Nelements)
+    for i = 1:TL
+        for j = 0:Ny
+            for k = 0:Nz
+                V_prof_out[i,pos2idx(j,k)] = V_prof(k*dz(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
+            end
+        end
+    end
+    
+    Re_out = zeros(TL, Ny+1)
+    for i = 1:TL
+        for j = 0:Ny
+            Re_out[i,pos2idx(j,0)] = Re(Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tambout[i])
+        end
+    end
+
     (maxval, maxpos) = findmax(Cout[TL,:])
     (Ny_max, Nz_max) = idx2pos(maxpos)
 
     P(C) = Statistics.mean(C[:, pos2idx(Ny,0:Nz)], dims = 2)
+    Q(C) = Statistics.mean(C[:, pos2idx(0:Ny,0)], dims = 2)
 
     #P(C) = (Statistics.mean(C[:, pos2idx(Ny,0:Nz)], dims=2) .- Cinit).* Q ./ L ./ W .* 24.0 .* 1000; # mass flow rate [g/day] / surface area [m^2]
 
@@ -110,9 +128,11 @@ function Plot_Biomass_Profile(Mout, Tout, T, params, filesuffix)
 
     p1 = plot(Y,Cout[TL, pos2idx(0:Ny,0)] * 1000.0, xlabel = "Length [m]", ylabel = "Algae Cell Density (g/m^3)", title="Algae Surface Cell Density", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p2 = plot(Y,Cout[TL, pos2idx(0:Ny,Nz)] * 1000.0, xlabel = "Length [m]", ylabel = "Algae Cell Density (g/m^3)", title="Algae Floor Cell Density", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
-    p3 = plot(T, P(Prod_out), xlabel = "Time [hours]", ylabel = "Algae Productivity (g/m^2/day)", title = "Net Continuous Biomass Productivity", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
-    p4 = plot(T, GHIout, xlabel = "Time [hours]", ylabel = "Global Horizontal Irradiance (GHI) [W/m^2]", title = "Solar Energy", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
-    p = plot(p1, p2, p3, p4, layout=(4,1), legend=false, size=(1200,1200))
+    p3 = plot(Z,V_prof_out[TL, pos2idx(0,0:Nz)]/3600.0, xlabel = "Height [m]", ylabel = "Fluid Velocity (m/s)", title="Velocity Profile at Inlet", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
+    p4 = plot(T,Q(Re_out), xlabel = "Time [hours]", ylabel = "Reynold's #", title="Average Reynold's # Over Time", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
+    p5 = plot(T, P(Prod_out), xlabel = "Time [hours]", ylabel = "Algae Productivity (g/m^2/day)", title = "Net Continuous Biomass Productivity", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
+    p6 = plot(T, GHIout, xlabel = "Time [hours]", ylabel = "Global Horizontal Irradiance (GHI) [W/m^2]", title = "Solar Energy", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
+    p = plot(p1, p2, p3, p4, p5, p6, layout=(6,1), legend=false, size=(1200,1200))
     png("Biomass_AlgaeRiverReactor_$filesuffix")
     savefig(p, "Biomass_AlgaeRiverReactor_$filesuffix.ps")
     Average_Continuous_Productivity = Statistics.mean(P(Mout)[max(1,TL-20):TL])

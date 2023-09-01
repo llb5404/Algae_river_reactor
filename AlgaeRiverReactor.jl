@@ -37,7 +37,7 @@ module AlgaeRiverReactor
     
         # more ....
 
-        PDE_AlgaeBiomass!(dX, C_biomass, Temperature, Height, params, t)      # changes dX
+        PDE_AlgaeBiomass!(dX, C_biomass, CO2, Temperature, Height, params, t)      # changes dX
         HeatTransfer!(dX, Temperature, Height, params, t)          # changes dX
         PDE_CO2!(dX, CO2, Height, C_biomass, Temperature, params, t)            # changes dX
         HeightChange!(dX, Height, Temperature, params, t)

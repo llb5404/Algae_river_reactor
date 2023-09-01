@@ -43,11 +43,12 @@ data_begin, 2161
 reactor_length, 200.0
 reactor_width, 20.0
 reactor_initial_liquid_level, 2.0
-reactor_depth, 6.98
-reactor_incline, 0.03490708864417217
+reactor_depth, 3.0
+reactor_incline, 0.015000562556960754
 velocity_profile, velocity_profile
 average_flow_velocity, average_flow_velocity
 volumetric_flow_rate, volumetric_flow_rate
+reynolds_number, reynolds_number
 input_hydraulic_diameter, 6.666666666666667
 input_reynolds_number, input_reynolds_number
 input_temperature, 293.15
@@ -56,7 +57,7 @@ input_biomass_concentration, 0.01
 max_biomass_concentration, 10.0
 max_biomass_light_saturation, 196.93654266958424
 photosynthetic_efficiency, 0.025
-max_biomass_specific_growth_rate, 0.23104906018664842
+max_biomass_specific_growth_rate, 0.28125
 Iave, Iave
 phiL, phiL
 co2_availability_factor, co2_availability_factor
