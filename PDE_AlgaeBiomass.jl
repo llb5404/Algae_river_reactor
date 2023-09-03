@@ -104,7 +104,7 @@ function PDE_AlgaeBiomass!(dX, C, CO2,Temperature, Height, params, t)
     for j=0:Nz
 
         dC[pos2idx(Ny,j)] = ( + Dz * (C[pos2idx(Ny,max(0,j-1))] + C[pos2idx(Ny,min(Nz,j+1))] - 2*C[pos2idx(Ny,j)]) / dz_v[pos2idx(Ny,j)]^2
-                              - Vol(dz_v[pos2idx(Ny,j)])*V_profile(dz_v[pos2idx(Ny,j)]*j, Hght(Ny,Temperature[pos2idx(Ny,j)],0)) * (C[pos2idx(Ny,j)]/Vol(dz_v[pos2idx(Ny,j)]) - C[pos2idx(Ny-1,j)]/Vol(dz_v[pos2idx(Ny-1,j)])) / dy
+                            - Vol(dz_v[pos2idx(Ny,j)])*V_profile(dz_v[pos2idx(Ny,j)]*j, Hght(Ny,Temperature[pos2idx(Ny,j)],0)) * (C[pos2idx(Ny,j)]/Vol(dz_v[pos2idx(Ny,j)]) - C[pos2idx(Ny-1,j)]/Vol(dz_v[pos2idx(Ny-1,j)])) / dy
                             )
     end
 
@@ -133,6 +133,7 @@ function PDE_AlgaeBiomass!(dX, C, CO2,Temperature, Height, params, t)
                                - Vol(dz_v[pos2idx(i,j)])*V_profile(dz_v[pos2idx(i,j)]*j, Hght(i,Temperature[pos2idx(i,j)],0)) * (C[pos2idx(i,j)]/Vol(dz_v[pos2idx(i,j)]) - C[pos2idx(i-1,j)]/Vol(dz_v[pos2idx(i-1,j)])) / dy
                                + mu_v[pos2idx(i,j)] * C[pos2idx(i,j)]
                                )
+
 
         end
     end

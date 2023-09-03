@@ -124,13 +124,13 @@ function LoadDefaultParameters(filesuffix)
 
     salinity_factor(S) = -6E-05*S^2 + 0.0007*S + 1.0078 #unitless, S in kg/m3
     ## obtained from 2-degree polynomial fit of data obtained from Krishnan et al.
-    T_opt = 308 #in K, optimum temperature
-    T_min = 277.2 #in K, minimum temperature
-    T_max = 320 #in K, maximum temperature
-    temperature_factor_g(T) = (T_opt-T_max)*(T-T_opt) #unitless
-    temperature_factor_f(T) = (T_opt-T_max)*(T_opt+T_min-2*T) #unitless
+    T_opt = 308 #in C, optimum temperature
+    T_min = 277.2 #in C, minimum temperature
+    T_max = 320 #in C, maximum temperature
+    temperature_factor_g(T) = (T_opt-T_min)*(T-T_opt) #unitless
+    temperature_factor_f(T) = (T_opt-T_max)*(T_opt+T_min-2*(T)) #unitless
     temperature_factor(T) = ((T-T_max)*(T-T_min)^2)/((T_opt-T_min)*(temperature_factor_g(T)-temperature_factor_f(T))) #unitless
-    @show temperature_factor(308)
+    
     ## opt, min, max temperatures given by Krishnan et al 
     ##temperature factor obtained from model given by Greene et al https://www.osti.gov/servlets/purl/1806213
 
@@ -139,12 +139,21 @@ function LoadDefaultParameters(filesuffix)
     photosynthetic_efficiency = 0.025                   # fraction of sunlight converted to chemical energy during photosynthesis
     threshold_dissolved_co2_growth = 0.5                # kg CO2 / m^3 water, minimum dissolved CO2 concentration before growth begins to slow
     Vol(dz) = (reactor_length/num_odes_y)*dz*reactor_width #m3
-    Iave(M_biomass_z, GHI, z, dz) = GHI .* 0.45 .* (1 - min(sum(M_biomass_z[1:z]/(Vol(dz))).*dz./max_biomass_concentration,1.0) ) #
+    Iave(M_biomass_z, GHI, z, dz) = GHI .* 0.45 .* (1 - min(sum(M_biomass_z[1:z])/(Vol(dz)).*dz./max_biomass_concentration,1.0) ) #
     phiL(M_biomass_z, GHI, z, dz) = Iave(M_biomass_z, GHI, z, dz) .* exp(1 - Iave(M_biomass_z, GHI, z, dz)./max_biomass_light_saturation) ./ max_biomass_light_saturation
     co2_availability_factor(C_co2, dz) = min.(C_co2/Vol(dz), threshold_dissolved_co2_growth) ./ threshold_dissolved_co2_growth
     biomass_specific_growth_rate(T, S, M_biomass_z, GHI, z, dz, C_co2) = max_biomass_specific_growth_rate .* phiL(M_biomass_z, GHI, z, dz) .* co2_availability_factor(C_co2,dz).*temperature_factor(T).*salinity_factor(S)
-    co2_per_biomass = 0.70   #based on 2.661 kg CO2 emitted when burning 1 gallon of algae (about 3.79 kg)
+    M_biomass = ones(num_odes_z,1)*0.01
     
+    @show phiL(M_biomass, 500, num_odes_z, 2.0/num_odes_z)
+    @show co2_availability_factor(1.8,2.0/num_odes_z)
+    @show temperature_factor(308)
+    @show temperature_factor(298)
+    @show salinity_factor(26.5)
+    @show biomass_specific_growth_rate(298,26.5,M_biomass,500,num_odes_z,2.0/num_odes_z,1.8)
+
+    co2_per_biomass = 0.70   #based on 2.661 kg CO2 emitted when burning 1 gallon of algae (about 3.79 kg)
+
     ## Mass Transfer Properties
     biomass_diffusion_coefficient_y = 1.0e-9 * 3600.0           #m^2/hour
     biomass_diffusion_coefficient_z = 1.0e-9 * 3600.0 * 100.0   #m^2/hour [100-fold higher in z-direction, due to added convection]

@@ -140,7 +140,7 @@ module AlgaeRiverReactor
             H_out[i,:] .= sol.u[i][3*Nelements+1:4*Nelements]
         end
         
-        Plot_Biomass_Profile(Mout, Tout, T, params, filesuffix)
+        Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
         Plot_Temperature_Profile(Tout, T, params, filesuffix)
         Plot_CO2_Profile(CO2_out, Tout, T, params, filesuffix)
         Plot_Height_Profile(Tout, T, params, filesuffix)

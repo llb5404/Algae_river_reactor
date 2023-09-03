@@ -1,6 +1,6 @@
 
 
-function Plot_Biomass_Profile(Mout, Tout, T, params, filesuffix)
+function Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
     Ny = params.num_odes_y
     Nz = params.num_odes_z
     Nelements = (Ny+1) * (Nz+1)
@@ -24,6 +24,7 @@ function Plot_Biomass_Profile(Mout, Tout, T, params, filesuffix)
     dy = L/Ny
     
     Y = LinRange(0,L,Ny+1)
+    Y1 = LinRange(0,dy*(Ny-1),Ny)
     Z = LinRange(0,H,Nz+1)
    
     
@@ -80,6 +81,7 @@ function Plot_Biomass_Profile(Mout, Tout, T, params, filesuffix)
 
     Hght(x,T,S,WNDSPD,RH,P) = params.height(x,T,S,WNDSPD,RH,P,H_o)
     dz(x,T,S,WNDSPD,RH,P) = Hght(x,T,S,WNDSPD,RH,P)/Nz
+    mu(T, S, M_biomass_z, GHI, z, dz, C_co2) = params.biomass_specific_growth_rate(T, S, M_biomass_z, GHI, z, dz, C_co2)
 
     Cout = zeros(TL, Nelements)
 
@@ -90,13 +92,11 @@ function Plot_Biomass_Profile(Mout, Tout, T, params, filesuffix)
             end
         end
     end
-
-    Prod_out = zeros(TL,Nelements)
+    pos2idx1(z) = z.+1
+    Prod_out = zeros(TL,Nz+1)
     for i = 1:TL
-        for j = 0:Ny
-            for k = 0:Nz
-                Prod_out[i,pos2idx(j,k)] = ((Cout[i,pos2idx(j,k)]- Cinit)* Q(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])* 24.0* 1000)/(W*L)
-            end
+        for k = 0:Nz
+            Prod_out[i,pos2idx1(k)] = ((Cout[i,pos2idx(Ny-1,k)]- Cinit)* Q(Hght(Ny-1,Tout[i,pos2idx(Ny-1,0)],Sout[i,pos2idx(Ny-1,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tambout[i])* 24.0* 1000)/(W*L)
         end
     end
 
@@ -116,18 +116,36 @@ function Plot_Biomass_Profile(Mout, Tout, T, params, filesuffix)
         end
     end
 
+    Hght_out = zeros(TL,Ny+1)
+
+    for i in 1:TL
+        for j in 0:Ny
+
+            Hght_out[i,pos2idx(j,0)] = Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
+        end
+    end
+
+    mu_out = zeros(TL, Nelements)
+    for i = 1:TL
+        for j = 0:Ny
+            for k = 0:Nz
+                mu_out = mu(Tout[i,pos2idx(j,k)], Sout[i,pos2idx(j,0)], Mout[i,pos2idx(j,0:Nz)], GHIout[i], k, Hght_out[i,pos2idx(j,0)]/Nz, CO2_out[i,pos2idx(j,k)])
+            end
+        end
+    end
+
     (maxval, maxpos) = findmax(Cout[TL,:])
     (Ny_max, Nz_max) = idx2pos(maxpos)
 
-    P(C) = Statistics.mean(C[:, pos2idx(Ny,0:Nz)], dims = 2)
+    P(C) = Statistics.mean(C[:, pos2idx1(0:Nz)], dims = 2)
     Q(C) = Statistics.mean(C[:, pos2idx(0:Ny,0)], dims = 2)
-
+    R(C) = Statistics.mean(C[:, pos2idx(0:Ny,Nz)], dims = 2)
     #P(C) = (Statistics.mean(C[:, pos2idx(Ny,0:Nz)], dims=2) .- Cinit).* Q ./ L ./ W .* 24.0 .* 1000; # mass flow rate [g/day] / surface area [m^2]
 
 
 
-    p1 = plot(Y,Cout[TL, pos2idx(0:Ny,0)] * 1000.0, xlabel = "Length [m]", ylabel = "Algae Cell Density (g/m^3)", title="Algae Surface Cell Density", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
-    p2 = plot(Y,Cout[TL, pos2idx(0:Ny,Nz)] * 1000.0, xlabel = "Length [m]", ylabel = "Algae Cell Density (g/m^3)", title="Algae Floor Cell Density", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
+    p1 = plot(Y1,Cout[TL, pos2idx(0:(Ny-1),0)] * 1000.0, xlabel = "Length [m]", ylabel = "Algae Cell Density (g/m^3)", title="Algae Surface Cell Density", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
+    p2 = plot(Y1,Cout[TL, pos2idx(0:(Ny-1),Nz)] * 1000.0, xlabel = "Length [m]", ylabel = "Algae Cell Density (g/m^3)", title="Algae Floor Cell Density", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p3 = plot(Z,V_prof_out[TL, pos2idx(0,0:Nz)]/3600.0, xlabel = "Height [m]", ylabel = "Fluid Velocity (m/s)", title="Velocity Profile at Inlet", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p4 = plot(T,Q(Re_out), xlabel = "Time [hours]", ylabel = "Reynold's #", title="Average Reynold's # Over Time", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p5 = plot(T, P(Prod_out), xlabel = "Time [hours]", ylabel = "Algae Productivity (g/m^2/day)", title = "Net Continuous Biomass Productivity", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
