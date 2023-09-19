@@ -14,7 +14,6 @@ Revise.track("LoadParameters.jl")
 Revise.track("PDE_AlgaeBiomass.jl")
 Revise.track("PDE_Temperature.jl")
 Revise.track("PDE_CO2.jl")
-Revise.track("PDE_Height.jl")
 Revise.track("MakePlots.jl")
 
 @show Revise.watched_files

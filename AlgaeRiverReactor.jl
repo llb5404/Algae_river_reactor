@@ -17,13 +17,11 @@ module AlgaeRiverReactor
     include("LoadParameters.jl")        # LoadDefaultParameters
     include("PDE_AlgaeBiomass.jl")      # PDE_AlgaeBiomass!
     include("PDE_Temperature.jl")       # HeatTransfer!
-    include("MakePlots.jl")             # Plot_Biomass_Profile, Plot_Temperature_Profile
+    include("MakePlots.jl")             # Plot_Biomass_Profile, Plot_Temperature_Profile, etc.
 
-    include("PDE_CO2.jl")
-    include("PDE_Height.jl")
+    include("PDE_CO2.jl")               #Carbon Flux
+    
 
-    #include("PDE_Water.jl")
-    #include("ExportData.jl")
 
     function Main_PDE!(dX, X, params, t)
         Ny = params.num_odes_y
@@ -33,27 +31,19 @@ module AlgaeRiverReactor
         C_biomass = X[1:Nelements]
         Temperature = X[Nelements+1:2*Nelements]
         CO2 = X[2*Nelements+1:3*Nelements]
-        Height = X[3*Nelements+1:4*Nelements]
     
         # more ....
 
-        PDE_AlgaeBiomass!(dX, C_biomass, CO2, Temperature, Height, params, t)      # changes dX
-        HeatTransfer!(dX, Temperature, Height, params, t)          # changes dX
-        PDE_CO2!(dX, CO2, Height, C_biomass, Temperature, params, t)            # changes dX
-        HeightChange!(dX, Height, Temperature, params, t)
+        PDE_AlgaeBiomass!(dX, C_biomass, CO2, Temperature, params, t)      # changes dX
+        HeatTransfer!(dX, Temperature, params, t)          # changes dX
+        PDE_CO2!(dX, CO2, C_biomass, Temperature, params, t)            # changes dX
         #dX is changed directly by the above functions
-
-        #@show dX
-        #@show size(X)
-        #@show size(C_biomass)
-        #@show size(Temperature)
-        #@show size(CO2)
         
         nothing
     end
 
     function Run()
-
+        #Units for params can be found in LoadParameters.jl
         filesuffix = "v1"
 
         ## Load Parameters
@@ -63,11 +53,8 @@ module AlgaeRiverReactor
         Time_interval = params.time_interval
         Ny = params.num_odes_y
         Nz = params.num_odes_z
-        L = params.reactor_length
-        H = params.reactor_initial_liquid_level
-        W = params.reactor_width                   # m
-        dy = L/Ny
-        dz = H/Nz
+
+    
 
         Nelements = (Ny+1) * (Nz+1)
         pos2idx(y,z) = (y.+1) .+ z.*(Ny.+1)
@@ -80,38 +67,21 @@ module AlgaeRiverReactor
         molecular_weight_co2 = params.molecular_weight_co2
         molecular_weight_water = params.molecular_weight_water
         CO2_in = S_co2(Temperature_in) .* density_water(Temperature_in) .* molecular_weight_co2 ./ molecular_weight_water
-        @show CO2_in
-        H_init = params.reactor_initial_liquid_level #reactor initial liquid level, m
+       
+        
     
 
         #ICs: initial conditions at t = 0
         C_biomass_o = zeros( (Ny+1) * (Nz+1), 1)
-        C_biomass_o[pos2idx(0,0:Nz)] .= C_biomass_in*(W*dy*dz)
-
-    
-
+        C_biomass_o[pos2idx(0,0:Nz)] .= C_biomass_in
         Temperature_o = ones( (Ny+1) * (Nz+1), 1) .* Temperature_in
-        CO2_o = (ones( (Ny+1) * (Nz+1), 1) .* CO2_in)*(W*dy*dz)
-        H_o = ones((Ny+1)*(Nz+1), 1).*H_init
-
-
-        #H_in(x) = H_init(x)
-
-        #for i = 0:Ny
-            
-            #H_o[pos2idx(i,0:Nz)] .= H_in(i)
-            
-        #end
-        
+        CO2_o = (ones( (Ny+1) * (Nz+1), 1) .* CO2_in)
         tspan = (0.0, Time_end)
 
-        #@show size(C_biomass_o)
-        #@show size(Temperature_o)
-        @show size(H_o)
+    
         
 
-        Xo = [C_biomass_o; Temperature_o; CO2_o; H_o]
-        #@show size(Xo)
+        Xo = [C_biomass_o; Temperature_o; CO2_o]
         @show tspan
 
         prob = ODEProblem(Main_PDE!, Xo, tspan, params)
@@ -133,11 +103,6 @@ module AlgaeRiverReactor
         CO2_out = zeros(TL, Nelements)
         for i in 1:TL
             CO2_out[i,:] .= sol.u[i][2*Nelements+1:3*Nelements]
-        end
-
-        H_out = zeros(TL, Nelements)
-        for i in 1:TL
-            H_out[i,:] .= sol.u[i][3*Nelements+1:4*Nelements]
         end
         
         Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
