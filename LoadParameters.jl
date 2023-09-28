@@ -156,8 +156,19 @@ function LoadDefaultParameters(filesuffix)
     Iave(M_biomass_z, GHI, z, dz) = GHI .* 0.45 .* (1 - min(sum(M_biomass_z[1:z]) .* dz ./ max_biomass_concentration, 1.0)) #unitless
     phiL(M_biomass_z, GHI, z, dz) = Iave(M_biomass_z, GHI, z, dz) .* exp(1 - Iave(M_biomass_z, GHI, z, dz)./max_biomass_light_saturation) ./ max_biomass_light_saturation #unitless
     co2_availability_factor(C_co2) = min.(C_co2, threshold_dissolved_co2_growth) ./ threshold_dissolved_co2_growth #unitless
+    N_availabilility_factor(C_n) = min.(C_n,theshold_dissolved_n_growth) ./theshold_dissolved_n_growth
+    P_availability_factor(C_p) = min.(C_p,theshold_dissolved_p_growth) ./theshold_dissolved_p_growth
     biomass_specific_growth_rate(T, S, M_biomass_z, GHI, z, dz, C_co2) = max_biomass_specific_growth_rate .* phiL(M_biomass_z, GHI, z, dz) .* co2_availability_factor(C_co2).*temperature_factor(T).*salinity_factor(S) #1/hr
     co2_per_biomass = 0.70   #based on 2.661 kg CO2 emitted when burning 1 gallon of algae (about 3.79 kg)
+
+    Initial_ammonia = 
+    Initial_DAP = 
+    ammonia_N_content = 0.82 #ammonia N content kg N/kg NH4
+    DAP_N_content = 0.18 #di-ammonium phosphate N content kg N/kg DAP
+    DAP_P_content = 0.20 #di-ammonium phosphate P content kg P/kg DAP
+    N_per_biomass = 0.0450 # kg/kg algae
+    P_per_biomass = 0.0120 #kg/kg algae
+    #determined from theshold for algae blooms - more experimental work is needed: 
 
     ## Mass Transfer Properties
     biomass_diffusion_coefficient_y = 1.0e-9 * 3600.0           #m^2/hour
