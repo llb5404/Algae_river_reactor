@@ -162,7 +162,7 @@ function HeatTransfer!(dX, T, params, t)
     
   
 
-    for i = 1:Ny-1
+    for i = 1:Ny
        
  
         # BC 2
@@ -184,10 +184,10 @@ function HeatTransfer!(dX, T, params, t)
 
         dT[pos2idx(0, j)] = 0 
 
-        dT[pos2idx(Ny, j)] = (  k_water * (T[pos2idx(Ny, max(0,j-1))] - 2*T[pos2idx(Ny,j)] + T[pos2idx(Ny, min(Nz,j+1))]) / dz_v[pos2idx(Ny,j)]^2    #conduction in z-dir
-                              + k_water * (T[pos2idx(Ny-1, j)] - 2*T[pos2idx(Ny,j)] + T[pos2idx(Ny,j)]) / dy^2                      #conduction in y-dir at boundary
-                              - V_profile[pos2idx(Ny,j)] / dy                                      #heat convection at boundary
-                             ) / (rho_water*cp_water)
+        #dT[pos2idx(Ny, j)] = (  k_water * (T[pos2idx(Ny, max(0,j-1))] - 2*T[pos2idx(Ny,j)] + T[pos2idx(Ny, min(Nz,j+1))]) / dz_v[pos2idx(Ny,j)]^2    #conduction in z-dir
+                              #+ k_water * (T[pos2idx(Ny-1, j)] - 2*T[pos2idx(Ny,j)] + T[pos2idx(Ny,j)]) / dy^2                      #conduction in y-dir at boundary
+                              #- V_profile[pos2idx(Ny,j)] / dy                                      #heat convection at boundary
+                             #) / (rho_water*cp_water)
     end
 
     for i=1:Ny-1

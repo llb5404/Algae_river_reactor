@@ -5,8 +5,10 @@ function Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
     Nz = params.num_odes_z
     Nelements = (Ny+1) * (Nz+1)
     pos2idx(y,z) = (y.+1) .+ z.*(Ny.+1)
+    pos2idx1(z) = z.+1
     idx2pos(pos) = [Integer(pos - 1 - (Ny+1) * floor( (pos-1) ./ (Ny.+1))), Integer(floor( (pos-1) ./ (Ny.+1)))]
     TL = length(T)
+    @show TL
     GHI_Data = params.global_horizontal_irradiance_data
     Tamb_Data = params.ambient_temperature_data
     WNDSPD_Data = params.wind_speed_data
@@ -21,7 +23,7 @@ function Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
     dy = L/Ny
     
     Y = LinRange(0,L,Ny+1)
-    Y1 = LinRange(0,dy*(Ny-1),Ny)
+    #Y1 = LinRange(0,dy*Ny,Ny)
     Z = LinRange(0,H,Nz+1)
    
     
@@ -169,6 +171,16 @@ function Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
         end
     end
 
+    Q_out = zeros(TL,Nelements)
+    for i in 1:TL
+        for j in 0:Ny
+            for k in 0:Nz
+                Q_out[i,pos2idx(j,k)] = Q(Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Vavg_lam(Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,0)]))
+            end
+        end
+    end
+
+
     Hght_out = zeros(TL,Ny+1) #m
     for i in 1:TL
         for j in 0:Ny
@@ -195,8 +207,8 @@ function Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
     
 
 
-    p1 = plot(Y1,Mout[TL, pos2idx(0:Ny,0)] * 1000.0, xlabel = "Length [m]", ylabel = "Algae Cell Density (g/m^3)", title="Algae Surface Cell Density", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
-    p2 = plot(Y1,Mout[TL, pos2idx(0:Ny,Nz)] * 1000.0, xlabel = "Length [m]", ylabel = "Algae Cell Density (g/m^3)", title="Algae Floor Cell Density", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
+    p1 = plot(Y,Mout[TL, pos2idx(0:Ny,0)] * 1000.0, xlabel = "Length [m]", ylabel = "Algae Cell Density (g/m^3)", title="Algae Surface Cell Density", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
+    p2 = plot(Y,Mout[TL, pos2idx(0:Ny,Nz)] * 1000.0, xlabel = "Length [m]", ylabel = "Algae Cell Density (g/m^3)", title="Algae Floor Cell Density", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p3 = plot(Z,V_prof_out[TL, pos2idx(Ny,0:Nz)]/3600.0, xlabel = "Height [m]", ylabel = "Fluid Velocity (m/s)", title="Velocity Profile at Outlet", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p4 = plot(T,Q_a(Re_out), xlabel = "Time [hours]", ylabel = "Reynold's #", title="Average Reynold's # Over Time", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p5 = plot(T, P(Prod_out), xlabel = "Time [hours]", ylabel = "Algae Productivity (g/m^2/day)", title = "Net Continuous Biomass Productivity", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
@@ -204,7 +216,17 @@ function Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
     p = plot(p1, p2, p3, p4, p5, p6, layout=(6,1), legend=false, size=(1200,1200))
     png("Biomass_AlgaeRiverReactor_$filesuffix")
     savefig(p, "Biomass_AlgaeRiverReactor_$filesuffix.ps")
-    Average_Continuous_Productivity = Statistics.mean(P(Mout)[max(1,TL-20):TL])
+    Average_Continuous_Productivity = Statistics.mean(P(Prod_out)[max(1,TL-10):TL])
+    @show Average_Continuous_Productivity
+    Average_height = Statistics.mean(Q_a(Hght_out))
+    Average_Dilution = Statistics.mean(R(Q_out)[max(1,TL-10):TL])/(W*L*Average_height)
+    Average_RT = L/(Statistics.mean(Q_a(Q_out)[max(1,TL-10):TL])/(Average_height*W)) #hr
+    Average_Re = Statistics.mean(Q_a(Re_out)[max(1,TL-10):TL])
+    @show Average_RT
+    @show Average_Re
+    @show Average_Dilution
+    @show Average_height
+
 
     # Mout2D(z, y), z = 0 is the surface and z = H is the bottom. For plotting, we will invert the z-scale so that z = 0 is the bottom and z = H is the surface.
     Mout2D = zeros(Nz+1, Ny+1)
@@ -213,6 +235,8 @@ function Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
             Mout2D[j+1,i+1] = Mout[TL, pos2idx(i,j)]
         end
     end
+    Average_Specific_Growth = Statistics.mean(Mout2D[1:Ny+1,1:Nz+1])
+    @show Average_Specific_Growth
     Vout2D = zeros(Nz+1,Ny+1)
     for i in 0:Ny
         for j in 0:Nz
@@ -386,6 +410,7 @@ function Plot_CO2_Profile(CO2_out, Tout, T, params, filesuffix)
    
     p1 = plot(Y,CO2_out[TL, pos2idx(0:Ny,0)] * 1000.0, xlabel = "Length [m]", ylabel = "Dissolved CO2 (g/m^3)", title="CO2 Surface Concentration", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p2 = plot(Y,CO2_out[TL, pos2idx(0:Ny,Nz)] * 1000.0, xlabel = "Length [m]", ylabel = "Dissolved CO2 (g/m^3)", title="CO2 Floor Concentration", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
+    @show 
     p = plot(p1, p2, layout=(2,1), legend=false, size=(1200,1200))
     png("CO2_AlgaeRiverReactor_$filesuffix")
     savefig(p, "CO2_AlgaeRiverReactor_$filesuffix.ps")
@@ -396,7 +421,8 @@ function Plot_CO2_Profile(CO2_out, Tout, T, params, filesuffix)
             Cout2D[j+1,i+1] = max(0, CO2_out[TL, pos2idx(i,j)]) # don't allow negative values
         end
     end
-    q = heatmap(Y, Z, log10.(Cout2D * 1000.0),
+    @show Average_CO2 = Statistics.mean(Cout2D[1:Ny+1,1:Nz+1])
+    q = heatmap(Y, Z, (Cout2D * 1000.0),
             yflip=true,
             c=cgrad([:blue, :white,:red, :yellow]),
             xlabel="Length (0 is entry) [m]", ylabel="Liquid Level (0 is surface) [m]",
@@ -405,6 +431,71 @@ function Plot_CO2_Profile(CO2_out, Tout, T, params, filesuffix)
             )
     savefig(q, "CO2Profile_AlgaeRiverReactor_$filesuffix.ps")
     png("CO2Profile_AlgaeRiverReactor_$filesuffix")
+
+    r1(T,S,CO2) = params.r1(T,S,CO2)
+    r2 = params.r2
+    r3(T,S,CO2) = params.r3(T,S,CO2)
+    r4(T,S,CO2) = params.r4(T,S,CO2)
+    K1(T,S) = params.K1(T,S)
+    K_neg1(T,S) = params.K_neg1(T,S)
+    K_pos1(T) = params.K_pos1(T)
+    K_neg4(T,S) = params.K_neg4(T,S)
+    K_pos4(T,S) = params.K_pos4(T,S)
+    KW = params.KW
+
+    Hy = zeros(TL,Nelements)
+    Hy1 = zeros(800,1)
+    Hy2 = zeros(800,1)
+    x = zeros(800,1)
+    r_1 = zeros(TL,Nelements)
+    r_3 = zeros(TL,Nelements)
+    r_4 = zeros(TL,Nelements)
+    Sal2 = ones(TL,Nelements,1)*26.44
+    pH = zeros(TL,Nelements)
+    for i in 1:TL
+        for j in 0:Ny
+            for k in 0:Nz
+                r_4[i,pos2idx(j,k)] = r4(Tout[i,pos2idx(j,k)],Sal2[i,pos2idx(j,k)], CO2_out[i,pos2idx(j,k)])
+                r_3[i,pos2idx(j,k)] = r3(Tout[i,pos2idx(j,k)],Sal2[i,pos2idx(j,k)], CO2_out[i,pos2idx(j,k)])
+                r_1[i,pos2idx(j,k)] = r1(Tout[i,pos2idx(j,k)],Sal2[i,pos2idx(j,k)],CO2_out[i,pos2idx(j,k)])
+                Hy1 = zeros(800)
+                for q in 1:800
+                    x = collect(LinRange(5,13,800))
+                    Hy1[q]  = 10^(-x[q])
+                end
+
+                for q in 1:800
+                    Hy2[q] = r_1[i,pos2idx(j,k)]*(Hy1[q])^4 .+ r2.*Hy1[q]^3 + r_3[i,pos2idx(j,k)]*Hy1[q] + r_4[i,pos2idx(j,k)]
+                    
+                    if Hy2[q]*Hy2[max(1,k-1)] <= 0 
+                        global Hy[i,pos2idx(j,k)] = Hy1[q]
+                        break
+                    end
+                end
+                pH[i,pos2idx(j,k)] = -log10(Hy[i,pos2idx(j,k)])
+
+            
+
+            end
+        end
+
+    end
+
+    pHout2D = zeros(Nz+1, Ny+1)
+    for i in 0:Ny
+        for j in 0:Nz
+            pHout2D[j+1,i+1] = max(0, pH[TL, pos2idx(i,j)]) # don't allow negative values
+        end
+    end
+    q1 = heatmap(Y, Z, pHout2D,
+        yflip=true,
+        c=cgrad([:blue, :white,:red, :yellow]),
+        xlabel="Length (0 is entry) [m]", ylabel="Liquid Level (0 is surface) [m]",
+        title="pH",
+        size=(800,400)
+    )
+    savefig(q1, "pHProfile_AlgaeRiverReactor_$filesuffix.ps")
+    png("pHProfile_AlgaeRiverReactor_$filesuffix")
 end
 
 function Plot_Height_Profile(Tout, T, params, filesuffix)

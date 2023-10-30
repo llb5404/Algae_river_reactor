@@ -5,12 +5,13 @@
 #   Load parameters from an Excel file
 
 using Debugger
+using Polynomials
 
 break_on(:error)
 
 function LoadDefaultParameters(filesuffix)
     ## PDE Discretization
-    num_odes_y = 10
+    num_odes_y = 5
     num_odes_z = 5
     time_end = 960.0        #hours
     time_interval = 1.0     #hours
@@ -91,19 +92,21 @@ function LoadDefaultParameters(filesuffix)
     data_begin = 2161
 
     ## River Reactor Geometric Properties
-    reactor_length = 64.8                             # meters
+    reactor_length = 75                            # meters
     reactor_width =  0.648                               # meters
-    reactor_initial_liquid_level = 0.2              # meters
-    reactor_depth = 1.0E-6   # meters
+    reactor_initial_liquid_level = 0.10             # meters
+    reactor_depth = 0.0   # meters
     reactor_incline = (asin(reactor_depth/reactor_length))  # radians
-    @show reactor_incline
+    
+
 
     ## River Reactor Operating Parameters
+    pressure_head = 0.003*(3600)^2 #kg/m-hr^2
     roughness_height = 5E-03 #m, taken from value for ordinary wood (need source on clay) https://www.engineeringtoolbox.com/surface-roughness-ventilation-ducts-d_209.html 
     hydraulic_diameter(H) = 4 * (reactor_width * H) / (reactor_width + 2 * H) #m
-    global_shear_velocity(H) = (acceleration_gravity*hydraulic_diameter(H)*tan(reactor_incline))^(1/2) #m/hr
-    local_shear_velocity(H) = (acceleration_gravity*H*tan(reactor_incline))^(1/2) #m/hr
-    rough_reynolds_number(H,T) = (local_shear_velocity(H)*roughness_height)/kinematic_viscosity_water(T) #unitless
+    global_shear_velocity(H) = ((hydraulic_diameter(H)*(density_water_20degC*acceleration_gravity*reactor_length*sin(reactor_incline) + pressure_head)/reactor_length)/density_water_20degC)^(1/2) #m/hr
+    local_shear_velocity(H) = ((H*(density_water_20degC*acceleration_gravity*reactor_length*sin(reactor_incline) + pressure_head)/reactor_length)/density_water_20degC)^(1/2) #m/hr
+    rough_reynolds_number(H,T) = (global_shear_velocity(H)*roughness_height)/kinematic_viscosity_water(T) #unitless
     #boundary layer heights listed in ascending order for higher Re
     boundary_layer_height_1(H,T) = roughness_height*(0.11/rough_reynolds_number(H,T)) #m
     boundary_layer_height_2(H,T) = roughness_height*(max((0.0275 −0.007*(sin((rough_reynolds_number(H,T)−4)/14)*pi)),0)^(1/2)) #m
@@ -112,16 +115,18 @@ function LoadDefaultParameters(filesuffix)
     
     wake_function(z,H) = (2*0.10/0.4)sin((pi/2)*((H-z)/H))^2 #unitless, used for flow at the top 80% of the reactor
     #for Turbulent Flow
-        #use for j = 0:Nz/5
+        #use for j = 4Nz/5:Nz
         velocity_profile_nw(z,H,B) = global_shear_velocity(H)*((1/0.4)*log(max(((H-z)+B)/roughness_height, 1)) -2.5*log(B/roughness_height))  #m/hr
-        #use for j = Nz/5:Nz
+        #use for j = 0:4Nz/5
         velocity_profile_w(z,H,B) = global_shear_velocity(H)*((1/0.4)*log(max(((H-z)+B)/roughness_height, 1)) -2.5*log(B/roughness_height)+wake_function(z,H)) #m/hr
         ## Han et al., (2017) https://www.hindawi.com/journals/mpe/2018/6491501/
         ## all other info above in RR Operating Parameters from Bonakdari et al., (2008) https://www.researchgate.net/publication/225456790_Turbulent_velocity_profile_in_fully-developed_open_channel_flows  
         average_flow_velocity(H,B) = (global_shear_velocity(H)/H)*(2.5*((H+B)*log((H+B)/roughness_height)-H)-2.5*((H/5+B)*log((H/5+B)/roughness_height)-H/5)-2.5*log(B/roughness_height)*(4*H/5)+(5*(sin(pi/5)+4*pi)*H)/(20*pi)+2.5*((H/5+B)*log((H/5+B)/roughness_height)-H/5)-2.5((B)*log(B/roughness_height))-2.5*log(B/roughness_height)*(H/5)) #m/hr
     #for Laminar Flow
-        velocity_profile_lam(z,H,T) = (density_water(T)*acceleration_gravity*sin(reactor_incline)/dynamic_viscosity_water(T))*((H-z)*H +0.5*(H-z)^2) #m/hr
-        average_flow_velocity_lam(H,T) = (density_water(T)*acceleration_gravity*sin(reactor_incline)/dynamic_viscosity_water(T))*(2*(H^2)/3) #m/hr
+        velocity_profile_lam(z,H,T) = ((density_water(T)*reactor_length*acceleration_gravity*sin(reactor_incline) + pressure_head)/(reactor_length*dynamic_viscosity_water(T)))*((H-z)*H +0.5*(H-z)^2) #m/hr
+        average_flow_velocity_lam(H,T) = ((density_water(T)*reactor_length*acceleration_gravity*sin(reactor_incline)+ pressure_head)/(reactor_length*dynamic_viscosity_water(T)))*(2*(H^2)/3) #m/hr
+    @show velocity_profile_nw(0.25,0.25,boundary_layer_height_3(0.25,298))
+    @show velocity_profile_w(0,0.25,boundary_layer_height_3(0.25,298))
     volumetric_flow_rate(H,V) = reactor_width*H*V #V is Vavg
     #Reynolds number for a duct (open surface), Re = Vavg * density * hydraulic diameter / viscosity
     reynolds_number(H,T,V) = V .* density_water(T) .* hydraulic_diameter(H) ./ dynamic_viscosity_water(T)
@@ -146,7 +151,16 @@ function LoadDefaultParameters(filesuffix)
     temperature_factor_g(T) = (T_opt-T_min)*(T-T_opt) #unitless
     temperature_factor_f(T) = (T_opt-T_max)*(T_opt+T_min-2*(T)) #unitless
     temperature_factor(T) = ((T-T_max)*(T-T_min)^2)/((T_opt-T_min)*(temperature_factor_g(T)-temperature_factor_f(T))) #unitless
+    pH_opt = 8
+    pH_max = 11
+    pH_min = 5
+    pH_factor_g(H) = (pH_opt-pH_min)*(-log10(H)-pH_opt)
+    pH_factor_f(H) = (pH_opt-pH_max)*(pH_opt+pH_min-2*(-log10(H)))
+    pH_factor(H) = ((-log10(H)-pH_max)*(-log10(H)-pH_min)^2)/((pH_opt-pH_min)*(pH_factor_g(H)-pH_factor_f(H)))
+    @show pH_factor(10^-8.21)
     
+
+
     ## opt, min, max temperatures given by Krishnan et al 
     ##temperature factor obtained from model given by Greene et al https://www.osti.gov/servlets/purl/1806213
 
@@ -155,20 +169,69 @@ function LoadDefaultParameters(filesuffix)
     Vol(dz) = (reactor_length/num_odes_y)*dz*reactor_width #m3
     Iave(M_biomass_z, GHI, z, dz) = GHI .* 0.45 .* (1 - min(sum(M_biomass_z[1:z]) .* dz ./ max_biomass_concentration, 1.0)) #unitless
     phiL(M_biomass_z, GHI, z, dz) = Iave(M_biomass_z, GHI, z, dz) .* exp(1 - Iave(M_biomass_z, GHI, z, dz)./max_biomass_light_saturation) ./ max_biomass_light_saturation #unitless
-    co2_availability_factor(C_co2) = min.(C_co2, threshold_dissolved_co2_growth) ./ threshold_dissolved_co2_growth #unitless
+    co2_availability_factor(C_co2) = min.(C_co2, threshold_dissolved_co2_growth) ./ (C_co2 + 0.0036*molecular_weight_co2) #unitless
     N_availabilility_factor(C_n) = min.(C_n,theshold_dissolved_n_growth) ./theshold_dissolved_n_growth
     P_availability_factor(C_p) = min.(C_p,theshold_dissolved_p_growth) ./theshold_dissolved_p_growth
-    biomass_specific_growth_rate(T, S, M_biomass_z, GHI, z, dz, C_co2) = max_biomass_specific_growth_rate .* phiL(M_biomass_z, GHI, z, dz) .* co2_availability_factor(C_co2).*temperature_factor(T).*salinity_factor(S) #1/hr
+    biomass_specific_growth_rate(T, S, M_biomass_z, GHI, z, dz, C_co2, Hyd) = max_biomass_specific_growth_rate .* phiL(M_biomass_z, GHI, z, dz) .* co2_availability_factor(C_co2).*temperature_factor(T).*salinity_factor(S) .*pH_factor(Hyd) #1/hr
+    @show biomass_specific_growth_rate(293,26.44,[0.01,0.01,0.01,0.01,0.01],700,5,reactor_initial_liquid_level/5,0.0005,6.59E-9)
+    
     co2_per_biomass = 0.70   #based on 2.661 kg CO2 emitted when burning 1 gallon of algae (about 3.79 kg)
 
-    Initial_ammonia = 
-    Initial_DAP = 
+ 
     ammonia_N_content = 0.82 #ammonia N content kg N/kg NH4
     DAP_N_content = 0.18 #di-ammonium phosphate N content kg N/kg DAP
     DAP_P_content = 0.20 #di-ammonium phosphate P content kg P/kg DAP
     N_per_biomass = 0.0450 # kg/kg algae
     P_per_biomass = 0.0120 #kg/kg algae
     #determined from theshold for algae blooms - more experimental work is needed: 
+
+    #https://pdf.sciencedirectassets.com/271768/1-s2.0-S0043135400X0348X/1-s2.0-0043135472901820/main.pdf?X-Amz-Security-Token=IQoJb3JpZ2luX2VjEBUaCXVzLWVhc3QtMSJHMEUCIGzqafx1pmG8YqjF876REGo3PwKrrVpspH2WfYa6ccuCAiEA5izjI3zuJVLWi1wAra66BdVHSCVwiqfLJuiH%2FgnHGB8qsgUILhAFGgwwNTkwMDM1NDY4NjUiDI7Qm2MoFAIfvOCSZSqPBUPoreJ7QpwQ05steBaLMuz5CaUR%2F1dHW2yHWdlCWQpSFe%2Fb5KQKUZV8cgDoCgsYUH5TMaWzOxKS6%2BveI6wt9bE9lmjzj%2BcYjHb8jK6y72mOqYDIf8Vuu41RPCPelEwxdi1RW8rSigRj6s6qzo1ksbcPVraU7USDYsNp00pzxAbMnWw8aRZs8GdX1oU9DCLfQ3h92yQBLlxJmDoam1xDhJ6lhMJ8vePRx3WJuKTLcnUR35l5N0IMcH5xKaqbvggLuCaoIKfHsfyKHh8IFTd2qh3guyIfUDViEl8mv0iERyAWcBKYkFky6VE9%2BxlvyqWR8DLuUmZHiiiWqMPaLAvvRDIlh31u4R3TxUDlDd0h17uG4ylzof1%2FFl2IfK9T%2F%2FgsIM6aaWoXz0iS38xoWvnSpk1FaISDgLpomkJo0vMXcMgppVoZFRvLm0SSMIFgmJHsxcKugU9gqze5JKnjTtu7aQ0kmehbMCfe1yIzVlc3GKsDz3LKWpZuslphmxERT%2Ff8okKXRK3JbITP%2BSINXYY6GJgqBik26fVInML1Ou0R1GbHV08MznveEozf4epcz9Wska%2BuBbSOkT5rg%2FHvrOHUInW7etCGAOZFecBvNvtGo3pNKe5LZQjxL83gcNa6aKI2G2NrHGj1aKVHUNssltmZWJgVxzGJOI4Gf1FpWAGz9Bcs7Mfe6%2Bm4Nt3ceyo8vjWuzQ%2BcokcOVqqzCLJJF39ABL7kk1F4Bii%2FgM2Hjfh1R4Osb7pIYAVpEbk9AJ0HFOmYMtchNCz71jh5koEBTzDxFNKZcBRUUmi0%2FuhfuKGDKuATLMoMm2zDZS3wFku%2FmA%2FqiNaQnnvqRpVAdeZkzwoGPSuqeGkbRMGlF0pGxD7lD1MwnfykqQY6sQHvI3y4bBsZC0dj%2BxkOGD8b2qzxmjfpKP4%2Babs%2BnUyGVmTqQlYWYYvcAODWvwxLgN5%2BUbyhHR%2FRlETXABxyaf8DbiMcebo%2Bm8JaifeZfz653YOka99NOsO08iJafqPVeXAJ59OTXSeCugntpBJ4t53Ru5KlVpQXWMuPCYHz5zq9QWdz0Hie5nokW0r%2BYnAfSTIygQfYxIHUdIDydVCHSxehjYq6LEzJQQuTy3i%2FqudT1HE%3D&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20231013T140326Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=ASIAQ3PHCVTYW3DUAVV4%2F20231013%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=85f8397c1fe85b4cee4ae0fd07252d93dbf5b961fd0a805770600a0b3a05bdcc&hash=23d1ac222002fbdfd8694e459ed6ee7a97b1178d254705f0faa7acac2dc61f64&host=68042c943591013ac2b2430a89b270f6af2c76d8dfd086a07176afe7c76c2c61&pii=0043135472901820&tid=spdf-59375276-b0c2-44ef-8f81-57a2720b9927&sid=406f91a355a537440b0ac2509a9639992030gxrqa&type=client&tsoh=d3d3LnNjaWVuY2VkaXJlY3QuY29t&ua=0f155a55505a505f515a07&rr=81582044bc21061e&cc=us
+    ## Rxn kinematic_viscosity_water
+    ##https://pubs.acs.org/doi/10.1021/acssuschemeng.2c03927
+    ##https://royalsocietypublishing.org/doi/pdf/10.1098/rspa.2009.0349
+
+
+    ##Rxn Kinetics 
+
+    Po = 350E-6
+    K0(T,S) = exp(-60.2409 + 9345.17/T + 23.3585*log(0.01*T) + S*(0.023517-0.023656*0.01*T + 0.0047036*(0.01*T)^2)) #M/atm
+    K1(T,S) = 10^(-(3670.7/T-62.008+9.7944*log(T)-0.0118*S+0.000116*S^2)) #M
+    K2(T,S) = 10^(-(1394.7/T + 4.777 - 0.0184*S + 0.000118*S^2)) #M
+    KW = 1E-14 #M^2
+    Kcal(T,S) = 10^(-(171.9065 + 0.077993*T - 2839.319/T - 71.595*log10(T) + (0.77712 - 0.0028426*T - 178.34/T)*S^(1/2) + 0.07711*S - 0.0041249*S^(3/2)))
+    K_pos1(T) = exp(1246.98-(6.19*10^4)/T - 183.0*log(T))*3600 #hr-1
+    K_neg1(T,S) = K_pos1(T)/K1(T,S) #hr-1 M-1
+    K_pos4(T,S) = ((499002.24*exp(4.2986E-04*S^2+5.75499E-05*S))*exp(-90166.83/(8.31451*T))/KW)*3600 #M-1 hr-1
+    K_neg4(T,S) = K_pos4(T,S)*(KW/K1(T,S)) #hr -1
+    r1(T,S,CO2) = -2*Kcal(T,S)/(CO2*(1/(molecular_weight_co2*1000))*K1(T,S)*K2(T,S))
+    r2 = -1
+    r3(T,S,CO2) = KW + CO2*K1(T,S)*(1/(molecular_weight_co2*1000))
+    r4(T,S,CO2) = 2*K1(T,S)*K2(T,S)*CO2*(1/(molecular_weight_co2*1000))
+   
+    
+    
+    ##https://epic.awi.de/id/eprint/13960/1/Sch2006g.pdf
+    ##file:///C:/Users/slant/Downloads/Dissociation_constants_of_carbonic_acid_in_seawate.pdf
+
+    ## initial conditions for carbon species
+    
+    initial_pH = 1.00E-06 #M, initial pH = 8
+    molecular_weight_h2co3 = 62.02/1000 #kg/mol
+    molecular_weight_hco3 = 61.02/1000 #kg/mol
+    molecular_weight_co3 = 60.01/1000 #kg/mol
+    molecular_weight_ca = 40.08/1000 #kg/mol
+    molecular_weight_caco3 = 100.9/1000 #kg/mol
+    initial_h2co3 = 1.64E-06*1000*molecular_weight_h2co3 #kg/m3
+    initial_hco3 = 3.28E-04*1000*molecular_weight_hco3 #kg/m3
+    initial_co3 = 1.97E-08*1000*molecular_weight_co3 #kg/m3
+    initial_ca = 2.50E-04*1000*molecular_weight_ca #kg/m3
+    initial_caco3 = 9.84E-09*1000*molecular_weight_caco3 #kg/m3
+    initial_co2_g(T,S) = Po*K0(T,S)*1000*molecular_weight_co2 #kg/m3
+    typical_ow = 10E-6*1000*1000*molecular_weight_co2 #mol/L
+    @show typical_ow
+    ##https://www.iaea.org/sites/default/files/18/07/oa-chemistry-dickson-050916.pdf
+
+
 
     ## Mass Transfer Properties
     biomass_diffusion_coefficient_y = 1.0e-9 * 3600.0           #m^2/hour
@@ -186,11 +249,18 @@ function LoadDefaultParameters(filesuffix)
     density_solution(T, S) = density_water(T) + S #kg/m3
     dVavgdx(T,S,R_H,W,P) = -((density_water(T)-density_water_vapor(T))*density_water(T)*specific_heat_capacity_water(T)*evaporation_mass_flux(T,W,R_H,P))/(density_solution(T,S)*density_water_vapor(T)*density_solution(T,S)*specific_heat_capacity_solution(T, S)) #hr-1
     #change in Vavg with dx, derived from Wrobel, 2006
-    height(x,T,S,W,R_H,P,H) = max(1/(((dynamic_viscosity_water(T)/density_solution(T,S))*(evaporation_mass_flux(T,W,R_H,P)-dVavgdx(T,S,R_H,W,P)*density_solution(T,S))*(reactor_length/num_odes_y)*x)/(density_solution(T,S)*acceleration_gravity*tan(reactor_incline)) + (1/H)), 0) #m
+    height(x,T,S,W,R_H,P,H) = 0.4
+    if reactor_incline > 0
+     height(x,T,S,W,R_H,P,H) = max(1/(((dynamic_viscosity_water(T)/density_solution(T,S))*(evaporation_mass_flux(T,W,R_H,P)-dVavgdx(T,S,R_H,W,P)*density_solution(T,S))*(reactor_length/num_odes_y)*x)/(density_solution(T,S)*acceleration_gravity*tan(reactor_incline)) + (1/H)), 0) #m
+    else
+     height(x,T,S,W,R_H,P,H) = H
+    end
+    @show height(num_odes_y,298,24,3,44,saturated_vapor_pressure_water_air,0.25)
+    
   
 
     ## Salinity Properties
-    
+    salinity_in = (1023.6 - density_water(298))
     salinity_o = (1023.6 - density_water(298))/density_water(298) #kg salt/kg water, obtained from "density of seawater @ 25 oC
     volumetric_flow_rate_o(V) = volumetric_flow_rate(reactor_initial_liquid_level,V) #kg/m3, T = Tamb, K
     salinity(T,W,R_H,P,x,V) = ((density_water(T)*volumetric_flow_rate_o(V)*salinity_o)/(density_water(T)*volumetric_flow_rate_o(V)-evaporation_mass_flux(T,W,R_H,P)*reactor_width*x*(reactor_length/num_odes_y)))*density_water(T) #kg/m3
@@ -215,10 +285,6 @@ function LoadDefaultParameters(filesuffix)
                 molecular_weight_water,
                 density_water,
                 dynamic_viscosity_water,
-                A,
-                B,
-                C,
-                D,
                 specific_heat_capacity_solution,                          
                 specific_heat_capacity_water,
                 thermal_conductivity_water,
@@ -243,6 +309,7 @@ function LoadDefaultParameters(filesuffix)
                 reactor_initial_liquid_level,
                 reactor_depth,
                 reactor_incline,
+                pressure_head,
                 rough_reynolds_number,
                 boundary_layer_height_1,
                 boundary_layer_height_2,
@@ -263,11 +330,40 @@ function LoadDefaultParameters(filesuffix)
                 max_biomass_light_saturation,
                 photosynthetic_efficiency,
                 max_biomass_specific_growth_rate,
+                salinity_factor,
+                temperature_factor,
+                pH_factor,
                 Iave,
                 phiL,
                 co2_availability_factor,
                 biomass_specific_growth_rate,
                 co2_per_biomass,
+                Po,
+                K0,
+                K1,
+                K2,
+                KW,
+                Kcal,
+                K_pos1,
+                K_neg1,
+                K_pos4,
+                K_neg4,
+                r1,
+                r2,
+                r3,
+                r4,
+                initial_pH,
+                molecular_weight_h2co3,
+                molecular_weight_hco3,
+                molecular_weight_co3,
+                molecular_weight_ca,
+                molecular_weight_caco3,
+                initial_h2co3,
+                initial_hco3,
+                initial_co3,
+                initial_ca,
+                initial_caco3,
+                initial_co2_g,
                 biomass_diffusion_coefficient_y,
                 biomass_diffusion_coefficient_z,
                 evaporation_constant,
@@ -278,6 +374,7 @@ function LoadDefaultParameters(filesuffix)
                 density_solution,
                 dVavgdx,
                 height,
+                salinity_in,
                 salinity,
                 )
 

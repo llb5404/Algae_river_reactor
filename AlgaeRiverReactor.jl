@@ -20,6 +20,8 @@ module AlgaeRiverReactor
     include("MakePlots.jl")             # Plot_Biomass_Profile, Plot_Temperature_Profile, etc.
 
     include("PDE_CO2.jl")               #Carbon Flux
+  
+   
     
 
 
@@ -31,12 +33,17 @@ module AlgaeRiverReactor
         C_biomass = X[1:Nelements]
         Temperature = X[Nelements+1:2*Nelements]
         CO2 = X[2*Nelements+1:3*Nelements]
+        
     
         # more ....
 
         PDE_AlgaeBiomass!(dX, C_biomass, CO2, Temperature, params, t)      # changes dX
         HeatTransfer!(dX, Temperature, params, t)          # changes dX
         PDE_CO2!(dX, CO2, C_biomass, Temperature, params, t)            # changes dX
+   
+
+
+
         #dX is changed directly by the above functions
         
         nothing
@@ -66,8 +73,11 @@ module AlgaeRiverReactor
         density_water = params.density_water        # kg / m^3, depends on Temperature.
         molecular_weight_co2 = params.molecular_weight_co2
         molecular_weight_water = params.molecular_weight_water
-        CO2_in = S_co2(Temperature_in) .* density_water(Temperature_in) .* molecular_weight_co2 ./ molecular_weight_water
+        S_in = params.salinity_in
+        CO2_in = params.initial_co2_g(Temperature_in,S_in)
+        #S_co2(Temperature_in) .* density_water(Temperature_in) .* molecular_weight_co2 ./ molecular_weight_water
        
+
         
     
 
@@ -104,6 +114,7 @@ module AlgaeRiverReactor
         for i in 1:TL
             CO2_out[i,:] .= sol.u[i][2*Nelements+1:3*Nelements]
         end
+
         
         Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
         Plot_Temperature_Profile(Tout, T, params, filesuffix)
