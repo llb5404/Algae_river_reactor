@@ -69,7 +69,7 @@ function Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
 
     Hght(x,T,S,WNDSPD,RH,P) = params.height(x,T,S,WNDSPD,RH,P,H_o) #m
     dz(x,T,S,WNDSPD,RH,P) = Hght(x,T,S,WNDSPD,RH,P)/Nz #m
-    mu(T, S, M_biomass_z, GHI, z, dz, C_co2) = params.biomass_specific_growth_rate(T, S, M_biomass_z, GHI, z, dz, C_co2) #1/hr
+    mu(T, S, M_biomass_z, GHI, z, dz, C_co2,Hyd) = params.biomass_specific_growth_rate(T, S, M_biomass_z, GHI, z, dz, C_co2,Hyd) #1/hr
     
 
 
@@ -189,11 +189,46 @@ function Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
         end
     end
 
+    molecular_weight_co2 = params.molecular_weight_co2
+    co2_to_M = (1/(molecular_weight_co2*1000*1000)) #converts from g/m3 to mol/L: mol*m3/kg-L
+    co2_to_uM = co2_to_M*1E6
+    Ca_o = params.initial_ca
+    Ca = ones(Nelements,1)*Ca_o
+
+    pH_max = 14
+    pH = zeros(TL, Nelements)
+    pHCO3 = zeros(TL, Nelements)
+    pCO3 = zeros(TL, Nelements)
+    TC = zeros(TL, Nelements)
+
+    K1(T,S) = params.K1(T,S)
+    K2(T,S) = params.K2(T,S)
+    Kcal(T,S) = params.Kcal(T,S)
+    
+    for i = 1:TL
+        for j = 0:Ny
+            for k = 0:Nz
+           
+                pH[i,pos2idx(j,k)] = min(0.5*(-log10(K2(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))-log10(K1(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))
+                -log10(max(CO2_out[i,pos2idx(j,k)]*co2_to_uM,1E-10))+log10(1E6)+log10(Kcal(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))-log10(Ca[pos2idx(j,k)])),Float64(pH_max))
+                #min(0.5*(-log10(K2(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))-log10(K1(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))-log10(max(CO2_out[i,pos2idx(j,k)]*co2_to_M,1E-10))+log10(Kcal(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))-log10(Ca[pos2idx(j,k)])),Float64(pH_max))
+                #pOH[pos2idx(i,j)] = -log10(KW) - pH[i,pos2idx(j,k)]
+                pHCO3[i,pos2idx(j,k)] = -log10(K1(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))-log10(max(CO2_out[i,pos2idx(j,k)]*co2_to_uM,1E-10))+log10(1E6)+pH[i,pos2idx(j,k)]
+                pCO3[i,pos2idx(j,k)] = -log10(K2(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))-pHCO3[i,pos2idx(j,k)]+pH[i,pos2idx(j,k)]
+                
+                #total carbon concentration is original carbon concentration
+                #[CO2_old] = [CO2_new] + [HCO3] + [CO3]
+                #dC = [CO2_new]-[CO2_old] = -[HCO3_new]-[CO3]
+                TC[i,pos2idx(j,k)] = 10^(-pHCO3[i,pos2idx(j,k)]) + 10^(-pCO3[i,pos2idx(j,k)]) + CO2_out[i,pos2idx(j,k)]*co2_to_M
+            end
+        end
+    end
+
     mu_out = zeros(TL, Nelements) #1/hr
     for i = 1:TL
         for j = 0:Ny
             for k = 0:Nz
-                mu_out = mu(Tout[i,pos2idx(j,k)], Sout[i,pos2idx(j,0)], Mout[i,pos2idx(j,0:Nz)], GHIout[i], k, dz_v[i,pos2idx(j,0)], CO2_out[i,pos2idx(j,k)])
+                mu_out = mu(Tout[i,pos2idx(j,k)], Sout[i,pos2idx(j,0)], Mout[i,pos2idx(j,0:Nz)], GHIout[i], k, dz_v[i,pos2idx(j,0)], CO2_out[i,pos2idx(j,k)],10^(-pH[i,pos2idx(j,k)]))
             end
         end
     end
@@ -408,8 +443,8 @@ function Plot_CO2_Profile(CO2_out, Tout, T, params, filesuffix)
     dz(x,T,S,WNDSPD,RH,P) = Hght(x,T,S,WNDSPD,RH,P)/Nz #m
 
    
-    p1 = plot(Y,CO2_out[TL, pos2idx(0:Ny,0)] * 1000.0, xlabel = "Length [m]", ylabel = "Dissolved CO2 (g/m^3)", title="CO2 Surface Concentration", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
-    p2 = plot(Y,CO2_out[TL, pos2idx(0:Ny,Nz)] * 1000.0, xlabel = "Length [m]", ylabel = "Dissolved CO2 (g/m^3)", title="CO2 Floor Concentration", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
+    p1 = plot(Y,CO2_out[TL, pos2idx(0:Ny,0)] , xlabel = "Length [m]", ylabel = "Dissolved CO2 (g/m^3)", title="CO2 Surface Concentration", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
+    p2 = plot(Y,CO2_out[TL, pos2idx(0:Ny,Nz)] , xlabel = "Length [m]", ylabel = "Dissolved CO2 (g/m^3)", title="CO2 Floor Concentration", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     @show 
     p = plot(p1, p2, layout=(2,1), legend=false, size=(1200,1200))
     png("CO2_AlgaeRiverReactor_$filesuffix")
@@ -422,7 +457,7 @@ function Plot_CO2_Profile(CO2_out, Tout, T, params, filesuffix)
         end
     end
     @show Average_CO2 = Statistics.mean(Cout2D[1:Ny+1,1:Nz+1])
-    q = heatmap(Y, Z, (Cout2D * 1000.0),
+    q = heatmap(Y, Z, (Cout2D),
             yflip=true,
             c=cgrad([:blue, :white,:red, :yellow]),
             xlabel="Length (0 is entry) [m]", ylabel="Liquid Level (0 is surface) [m]",
@@ -432,53 +467,41 @@ function Plot_CO2_Profile(CO2_out, Tout, T, params, filesuffix)
     savefig(q, "CO2Profile_AlgaeRiverReactor_$filesuffix.ps")
     png("CO2Profile_AlgaeRiverReactor_$filesuffix")
 
-    r1(T,S,CO2) = params.r1(T,S,CO2)
-    r2 = params.r2
-    r3(T,S,CO2) = params.r3(T,S,CO2)
-    r4(T,S,CO2) = params.r4(T,S,CO2)
+    molecular_weight_co2 = params.molecular_weight_co2
+    co2_to_M = (1/(molecular_weight_co2*1000*1000)) #converts from g/m3 to mol/L: mol*m3/kg-L
+    co2_to_uM = co2_to_M*1E6
+    Ca_o = params.initial_ca
+    Ca = ones(Nelements,1)*Ca_o
+
+    pH_max = 14
+    pH = zeros(TL, Nelements)
+    pHCO3 = zeros(TL, Nelements)
+    pCO3 = zeros(TL, Nelements)
+    TC = zeros(TL, Nelements)
+
     K1(T,S) = params.K1(T,S)
-    K_neg1(T,S) = params.K_neg1(T,S)
-    K_pos1(T) = params.K_pos1(T)
-    K_neg4(T,S) = params.K_neg4(T,S)
-    K_pos4(T,S) = params.K_pos4(T,S)
-    KW = params.KW
+    K2(T,S) = params.K2(T,S)
+    Kcal(T,S) = params.Kcal(T,S)
 
-    Hy = zeros(TL,Nelements)
-    Hy1 = zeros(800,1)
-    Hy2 = zeros(800,1)
-    x = zeros(800,1)
-    r_1 = zeros(TL,Nelements)
-    r_3 = zeros(TL,Nelements)
-    r_4 = zeros(TL,Nelements)
-    Sal2 = ones(TL,Nelements,1)*26.44
-    pH = zeros(TL,Nelements)
-    for i in 1:TL
-        for j in 0:Ny
-            for k in 0:Nz
-                r_4[i,pos2idx(j,k)] = r4(Tout[i,pos2idx(j,k)],Sal2[i,pos2idx(j,k)], CO2_out[i,pos2idx(j,k)])
-                r_3[i,pos2idx(j,k)] = r3(Tout[i,pos2idx(j,k)],Sal2[i,pos2idx(j,k)], CO2_out[i,pos2idx(j,k)])
-                r_1[i,pos2idx(j,k)] = r1(Tout[i,pos2idx(j,k)],Sal2[i,pos2idx(j,k)],CO2_out[i,pos2idx(j,k)])
-                Hy1 = zeros(800)
-                for q in 1:800
-                    x = collect(LinRange(5,13,800))
-                    Hy1[q]  = 10^(-x[q])
-                end
-
-                for q in 1:800
-                    Hy2[q] = r_1[i,pos2idx(j,k)]*(Hy1[q])^4 .+ r2.*Hy1[q]^3 + r_3[i,pos2idx(j,k)]*Hy1[q] + r_4[i,pos2idx(j,k)]
-                    
-                    if Hy2[q]*Hy2[max(1,k-1)] <= 0 
-                        global Hy[i,pos2idx(j,k)] = Hy1[q]
-                        break
-                    end
-                end
-                pH[i,pos2idx(j,k)] = -log10(Hy[i,pos2idx(j,k)])
-
-            
-
+    Sout = ones(TL,Nelements)*26.44
+    
+    for i = 1:TL
+        for j = 0:Ny
+            for k = 0:Nz
+           
+                pH[i,pos2idx(j,k)] = min(0.5*(-log10(K2(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))-log10(K1(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))
+                -log10(max(CO2_out[i,pos2idx(j,k)]*co2_to_uM,1E-10))+log10(1E6)+log10(Kcal(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))-log10(Ca[pos2idx(j,k)])),Float64(pH_max))
+                #min(0.5*(-log10(K2(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))-log10(K1(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))-log10(max(CO2_out[i,pos2idx(j,k)]*co2_to_M,1E-10))+log10(Kcal(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))-log10(Ca[pos2idx(j,k)])),Float64(pH_max))
+                #pOH[pos2idx(i,j)] = -log10(KW) - pH[i,pos2idx(j,k)]
+                pHCO3[i,pos2idx(j,k)] = -log10(K1(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))-log10(max(CO2_out[i,pos2idx(j,k)]*co2_to_uM,1E-10))+log10(1E6)+pH[i,pos2idx(j,k)]
+                pCO3[i,pos2idx(j,k)] = -log10(K2(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))-pHCO3[i,pos2idx(j,k)]+pH[i,pos2idx(j,k)]
+                
+                #total carbon concentration is original carbon concentration
+                #[CO2_old] = [CO2_new] + [HCO3] + [CO3]
+                #dC = [CO2_new]-[CO2_old] = -[HCO3_new]-[CO3]
+                TC[i,pos2idx(j,k)] = 10^(-pHCO3[i,pos2idx(j,k)]) + 10^(-pCO3[i,pos2idx(j,k)]) + CO2_out[i,pos2idx(j,k)]*co2_to_M
             end
         end
-
     end
 
     pHout2D = zeros(Nz+1, Ny+1)

@@ -74,7 +74,8 @@ module AlgaeRiverReactor
         molecular_weight_co2 = params.molecular_weight_co2
         molecular_weight_water = params.molecular_weight_water
         S_in = params.salinity_in
-        CO2_in = params.initial_co2_g(Temperature_in,S_in)
+        CO2_in = params.initial_co2_g(Temperature_in,S_in) #g/m3
+        @show CO2_in
         #S_co2(Temperature_in) .* density_water(Temperature_in) .* molecular_weight_co2 ./ molecular_weight_water
        
 
@@ -104,7 +105,7 @@ module AlgaeRiverReactor
         for i in 1:TL
             Mout[i,:] .= sol.u[i][1:Nelements]
         end
-
+        @show Mout
         Tout = zeros(TL, Nelements)
         for i in 1:TL
             Tout[i,:] .= sol.u[i][Nelements+1:2*Nelements]
@@ -114,7 +115,7 @@ module AlgaeRiverReactor
         for i in 1:TL
             CO2_out[i,:] .= sol.u[i][2*Nelements+1:3*Nelements]
         end
-
+        @show CO2_out
         
         Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
         Plot_Temperature_Profile(Tout, T, params, filesuffix)

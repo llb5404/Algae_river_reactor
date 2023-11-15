@@ -49,7 +49,7 @@ function PDE_AlgaeBiomass!(dX, C, CO2,Temperature, params, t)
     pH_factor(Hyd) = params.pH_factor(Hyd)
     bm = params.max_biomass_specific_growth_rate
     phiL(Mz, z, dz_y) = params.phiL(Mz,GHI,z,dz_y)
-    mu(T,S,Mz,z,dz_y,Co2, Hyd) = bm .* phiL(Mz, z, dz_y) .* co2_availability_factor(Co2).*temperature_factor(T).*salinity_factor(S) .*pH_factor(Hyd)
+    mu(T,S,Mz,z,dz_y,Co2,Hyd) = bm .* phiL(Mz, z, dz_y) .* co2_availability_factor(Co2).*temperature_factor(T).*salinity_factor(S)*pH_factor(Hyd)
     
 
     Hght(x,T,S) = params.height(x,T,S,WNDSPD,RH,P_a,H_o)
@@ -111,14 +111,18 @@ function PDE_AlgaeBiomass!(dX, C, CO2,Temperature, params, t)
     r3(T,S,CO2) = params.r3(T,S,CO2)
     r4(T,S,CO2) = params.r4(T,S,CO2)
     K1(T,S) = params.K1(T,S)
+    K2(T,S) = params.K2(T,S)
+    Kcal(T,S) = params.Kcal(T,S)
     K_neg1(T,S) = params.K_neg1(T,S)
     K_pos1(T) = params.K_pos1(T)
     K_neg4(T,S) = params.K_neg4(T,S)
     K_pos4(T,S) = params.K_pos4(T,S)
+    Ca_o = params.initial_ca
+    Ca = ones(Nelements,1)*Ca_o
     KW = params.KW
 
-    pH_max = 18
-    pH_min = 5
+    pH_max = 14
+    pH_min = 1
     step_size = (pH_max - pH_min)*100
     Hy = zeros(Nelements,1)
     Hy1 = zeros(step_size,1)
@@ -130,48 +134,54 @@ function PDE_AlgaeBiomass!(dX, C, CO2,Temperature, params, t)
     Sal2 = ones(Nelements,1)*26.44
     
     
-    for i in 0:Ny
-        for j in 0:Nz
-            r_4[pos2idx(i,j)] = r4(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)], CO2[pos2idx(i,j)])
-            r_3[pos2idx(i,j)] = r3(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)], CO2[pos2idx(i,j)])
-            r_1[pos2idx(i,j)] = r1(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)],CO2[pos2idx(i,j)])
-            Hy1 = zeros(step_size)
-            for k in 1:step_size
-                x = collect(LinRange(pH_min,pH_max,step_size))
-                Hy1[k]  = 10.0^(-x[k])
-            end
+    #for i in 0:Ny
+        #for j in 0:Nz
+            #r_4[pos2idx(i,j)] = r4(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)], CO2[pos2idx(i,j)])
+            #r_3[pos2idx(i,j)] = r3(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)], CO2[pos2idx(i,j)])
+            #r_1[pos2idx(i,j)] = r1(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)],CO2[pos2idx(i,j)])
+            #Hy1 = zeros(step_size)
+            #for k in 1:step_size
+                #x = collect(LinRange(pH_min,pH_max,step_size))
+                #Hy1[k]  = 10.0^(-x[k])
+            #end
 
-            for k in 1:step_size
-                Hy2[k] = r_1[pos2idx(i,j)]*(Hy1[k])^4 .+ r2.*Hy1[k]^3 + r_3[pos2idx(i,j)]*Hy1[k] + r_4[pos2idx(i,j)]
+            #for k in 1:step_size
+                #Hy2[k] = r_1[pos2idx(i,j)]*(Hy1[k])^4 .+ r2.*Hy1[k]^3 + r_3[pos2idx(i,j)]*Hy1[k] + r_4[pos2idx(i,j)]
                 
-                if Hy2[k]*Hy2[max(1,k-1)] <= 0 
-                    global Hy[pos2idx(i,j)] = min(Hy1[k],10.0^(-Float64(pH_max)))
-                    break
-                end
-            end
+                #if Hy2[k]*Hy2[max(1,k-1)] <= 0 
+                    #global Hy[pos2idx(i,j)] = max(Hy1[k],10.0^(-Float64(pH_max)))
+                    #break
+                #end
+            #end
+            
 
+        #end
+    #end
+    
+    molecular_weight_co2 = params.molecular_weight_co2
+    co2_to_M = (1/(molecular_weight_co2*1000*1000))
+    co2_to_uM = co2_to_M*1E6
+    pH = zeros(Nelements,1)
 
+    for i = 0:Ny
+        for j = 0:Nz
+
+            pH[pos2idx(i,j)] = min(0.5*(-log10(K2(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)]))-log10(K1(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)]))
+            -log10(max(C[pos2idx(i,j)]*co2_to_uM,1E-10))+log10(1E6)+log10(Kcal(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)]))-log10(Ca[pos2idx(i,j)])),Float64(pH_max))
         end
     end
-    
-    
+
     #Vector of specific growth rate values
     mu_v = zeros(Nelements, 1)
     for i in 0:Ny
         for j in 0:Nz
-            mu_v[pos2idx(i,j)] = mu(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)],C[pos2idx(i,0:Nz)],j,dz_v[pos2idx(i,j)],CO2[pos2idx(i,j)], Hy[pos2idx(i,j)])
-            #@show mu(293,26.44,[0.01,0.01,0.01,0.01,0.01],0,0.01,0.000522968,6.596190e-9)
-            #@show mu(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)],C[pos2idx(i,0:Nz)],j,dz_v[pos2idx(i,j)],CO2[pos2idx(i,j)], Hy[pos2idx(i,j)])
-            #@show phiL(C[pos2idx(i,0:Nz)], j, dz_v[pos2idx(i,j)])
-            #@show co2_availability_factor(CO2[pos2idx(i,j)])
-            #@show temperature_factor(Temperature[pos2idx(i,j)])
-            #@show salinity_factor(Sal2[pos2idx(i,j)])
-            #@show pH_factor(Hy[pos2idx(i,j)])
-            #@show GHI
+            mu_v[pos2idx(i,j)] = mu(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)],C[pos2idx(i,0:Nz)],j,dz_v[pos2idx(i,j)],CO2[pos2idx(i,j)],pH[pos2idx(i,j)])
+            
            
         end
     end
    
+    
 
 
     # ==========  ALGAE GROWTH ========
@@ -228,10 +238,11 @@ function PDE_AlgaeBiomass!(dX, C, CO2,Temperature, params, t)
                                - V_profile[pos2idx(i,j)] * (C[pos2idx(i,j)] - C[pos2idx(i-1,j)]) / dy
                                + mu_v[pos2idx(i,j)] * C[pos2idx(i,j)]
                                )
-                               
+                  
         end
     end
-    
+
+   
 
     @views dX[1:Nelements] .= dC        # order matters! The @views operator takes a slice out of an array without making a copy.
 

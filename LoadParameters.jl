@@ -13,7 +13,7 @@ function LoadDefaultParameters(filesuffix)
     ## PDE Discretization
     num_odes_y = 5
     num_odes_z = 5
-    time_end = 960.0        #hours
+    time_end = 960       #hours
     time_interval = 1.0     #hours
     ## Physical Constants
     reference_temperature = 20.0                                        # deg Celsius
@@ -59,7 +59,7 @@ function LoadDefaultParameters(filesuffix)
     density_water_vapor(T) = 0.804 #kg/m3
     
     # CO2 Properties
-    diffusion_coeff_co2_water(T) = (0.0816 .* T .- 22.601) .* 1.0E-09              # m^2 / sec [equation fitted based on data in https://pubs.acs.org/doi/10.1021/je401008s]
+    diffusion_coeff_co2_water(T) = (0.0816 .* T .- 22.601) .* 1.0E-09*3600              # m^2 / sec [equation fitted based on data in https://pubs.acs.org/doi/10.1021/je401008s]
     @show diffusion_coeff_co2_water(298)
     solubility_co2_water(T) = (0.00025989 .* (T .- 273.15).^2 .- 0.03372247 .* (T .- 273.15) .+ 1.31249383) ./ 1000.0  #mole fraction of dissolved CO2 in water at equilibrium [equation fitted based on data from https://srd.nist.gov/JPCRD/jpcrd427.pdf]
     molecular_weight_co2 = 0.04401                                              # kg / mole
@@ -95,7 +95,7 @@ function LoadDefaultParameters(filesuffix)
     reactor_length = 75                            # meters
     reactor_width =  0.648                               # meters
     reactor_initial_liquid_level = 0.10             # meters
-    reactor_depth = 0.0   # meters
+    reactor_depth = 0   # meters
     reactor_incline = (asin(reactor_depth/reactor_length))  # radians
     
 
@@ -151,13 +151,14 @@ function LoadDefaultParameters(filesuffix)
     temperature_factor_g(T) = (T_opt-T_min)*(T-T_opt) #unitless
     temperature_factor_f(T) = (T_opt-T_max)*(T_opt+T_min-2*(T)) #unitless
     temperature_factor(T) = ((T-T_max)*(T-T_min)^2)/((T_opt-T_min)*(temperature_factor_g(T)-temperature_factor_f(T))) #unitless
-    pH_opt = 8
-    pH_max = 11
+    pH_opt = 7.5
+    pH_max = 10
     pH_min = 5
-    pH_factor_g(H) = (pH_opt-pH_min)*(-log10(H)-pH_opt)
-    pH_factor_f(H) = (pH_opt-pH_max)*(pH_opt+pH_min-2*(-log10(H)))
-    pH_factor(H) = ((-log10(H)-pH_max)*(-log10(H)-pH_min)^2)/((pH_opt-pH_min)*(pH_factor_g(H)-pH_factor_f(H)))
-    @show pH_factor(10^-8.21)
+    pH_factor_g(H) = (pH_opt-pH_min)*(H-pH_opt)
+    pH_factor_f(H) = (pH_opt-pH_max)*(pH_opt+pH_min-2*(H))
+    pH_factor(H) = 1
+    #((H-pH_max)*(H-pH_min)^2)/((pH_opt-pH_min)*(pH_factor_g(H)-pH_factor_f(H)))
+    @show pH_factor(10^-14)
     
 
 
@@ -169,11 +170,11 @@ function LoadDefaultParameters(filesuffix)
     Vol(dz) = (reactor_length/num_odes_y)*dz*reactor_width #m3
     Iave(M_biomass_z, GHI, z, dz) = GHI .* 0.45 .* (1 - min(sum(M_biomass_z[1:z]) .* dz ./ max_biomass_concentration, 1.0)) #unitless
     phiL(M_biomass_z, GHI, z, dz) = Iave(M_biomass_z, GHI, z, dz) .* exp(1 - Iave(M_biomass_z, GHI, z, dz)./max_biomass_light_saturation) ./ max_biomass_light_saturation #unitless
-    co2_availability_factor(C_co2) = min.(C_co2, threshold_dissolved_co2_growth) ./ (C_co2 + 0.0036*molecular_weight_co2) #unitless
+    co2_availability_factor(C_co2) = (C_co2/1000) ./ ((C_co2/1000) + 0.00036*molecular_weight_co2 + (C_co2/1000)^2/(10*molecular_weight_co2)) #unitless, input is CO2 in g/m3
     N_availabilility_factor(C_n) = min.(C_n,theshold_dissolved_n_growth) ./theshold_dissolved_n_growth
     P_availability_factor(C_p) = min.(C_p,theshold_dissolved_p_growth) ./theshold_dissolved_p_growth
-    biomass_specific_growth_rate(T, S, M_biomass_z, GHI, z, dz, C_co2, Hyd) = max_biomass_specific_growth_rate .* phiL(M_biomass_z, GHI, z, dz) .* co2_availability_factor(C_co2).*temperature_factor(T).*salinity_factor(S) .*pH_factor(Hyd) #1/hr
-    @show biomass_specific_growth_rate(293,26.44,[0.01,0.01,0.01,0.01,0.01],700,5,reactor_initial_liquid_level/5,0.0005,6.59E-9)
+    biomass_specific_growth_rate(T, S, M_biomass_z, GHI, z, dz, C_co2,H) = max_biomass_specific_growth_rate .* phiL(M_biomass_z, GHI, z, dz) .* co2_availability_factor(C_co2).*temperature_factor(T).*salinity_factor(S)*pH_factor(H) #1/hr
+    @show biomass_specific_growth_rate(293,26.44,[0.01,0.01,0.01,0.01,0.01],700,5,reactor_initial_liquid_level/5,0.0005,10^-14)
     
     co2_per_biomass = 0.70   #based on 2.661 kg CO2 emitted when burning 1 gallon of algae (about 3.79 kg)
 
@@ -193,20 +194,21 @@ function LoadDefaultParameters(filesuffix)
 
     ##Rxn Kinetics 
 
-    Po = 350E-6
+    Po = 350E-6 #atm
     K0(T,S) = exp(-60.2409 + 9345.17/T + 23.3585*log(0.01*T) + S*(0.023517-0.023656*0.01*T + 0.0047036*(0.01*T)^2)) #M/atm
+    @show K0(292.5,25)
     K1(T,S) = 10^(-(3670.7/T-62.008+9.7944*log(T)-0.0118*S+0.000116*S^2)) #M
     K2(T,S) = 10^(-(1394.7/T + 4.777 - 0.0184*S + 0.000118*S^2)) #M
     KW = 1E-14 #M^2
     Kcal(T,S) = 10^(-(171.9065 + 0.077993*T - 2839.319/T - 71.595*log10(T) + (0.77712 - 0.0028426*T - 178.34/T)*S^(1/2) + 0.07711*S - 0.0041249*S^(3/2)))
     K_pos1(T) = exp(1246.98-(6.19*10^4)/T - 183.0*log(T))*3600 #hr-1
-    K_neg1(T,S) = K_pos1(T)/K1(T,S) #hr-1 M-1
-    K_pos4(T,S) = ((499002.24*exp(4.2986E-04*S^2+5.75499E-05*S))*exp(-90166.83/(8.31451*T))/KW)*3600 #M-1 hr-1
+    K_neg1(T,S) = (K_pos1(T)/K1(T,S))/1E6 #hr-1 uM-1
+    K_pos4(T,S) = (((499002.24*exp(4.2986E-04*S^2+5.75499E-05*S))*exp(-90166.83/(8.31451*T))/KW)*3600)/1E6 #uM-1 hr-1
     K_neg4(T,S) = K_pos4(T,S)*(KW/K1(T,S)) #hr -1
     r1(T,S,CO2) = -2*Kcal(T,S)/(CO2*(1/(molecular_weight_co2*1000))*K1(T,S)*K2(T,S))
     r2 = -1
-    r3(T,S,CO2) = KW + CO2*K1(T,S)*(1/(molecular_weight_co2*1000))
-    r4(T,S,CO2) = 2*K1(T,S)*K2(T,S)*CO2*(1/(molecular_weight_co2*1000))
+    r3(T,S,CO2) = KW + CO2*K1(T,S)*(1/(molecular_weight_co2*1000)) #M^2
+    r4(T,S,CO2) = 2*K1(T,S)*K2(T,S)*CO2*(1/(molecular_weight_co2*1000)) #M^3
    
     
     
@@ -224,10 +226,10 @@ function LoadDefaultParameters(filesuffix)
     initial_h2co3 = 1.64E-06*1000*molecular_weight_h2co3 #kg/m3
     initial_hco3 = 3.28E-04*1000*molecular_weight_hco3 #kg/m3
     initial_co3 = 1.97E-08*1000*molecular_weight_co3 #kg/m3
-    initial_ca = 2.50E-04*1000*molecular_weight_ca #kg/m3
+    initial_ca = 400*(1/(1000*1000*molecular_weight_ca)) #mol/L
     initial_caco3 = 9.84E-09*1000*molecular_weight_caco3 #kg/m3
-    initial_co2_g(T,S) = Po*K0(T,S)*1000*molecular_weight_co2 #kg/m3
-    typical_ow = 10E-6*1000*1000*molecular_weight_co2 #mol/L
+    initial_co2_g(T,S) = Po*K0(T,S)*1000*1000*molecular_weight_co2 #g/m3
+    typical_ow = 15.5E-6*1000*molecular_weight_co2 #kg/m3
     @show typical_ow
     ##https://www.iaea.org/sites/default/files/18/07/oa-chemistry-dickson-050916.pdf
 
@@ -364,6 +366,7 @@ function LoadDefaultParameters(filesuffix)
                 initial_ca,
                 initial_caco3,
                 initial_co2_g,
+                typical_ow,
                 biomass_diffusion_coefficient_y,
                 biomass_diffusion_coefficient_z,
                 evaporation_constant,

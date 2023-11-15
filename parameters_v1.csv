@@ -1,7 +1,7 @@
 name, value
 num_odes_y, 5
 num_odes_z, 5
-time_end, 960.0
+time_end, 960
 time_interval, 1.0
 reference_pressure, 101315.0
 gas_constant, 8.31446261815324
@@ -39,7 +39,7 @@ data_begin, 2161
 reactor_length, 75
 reactor_width, 0.648
 reactor_initial_liquid_level, 0.1
-reactor_depth, 0.0
+reactor_depth, 0
 reactor_incline, 0.0
 pressure_head, 38880.0
 rough_reynolds_number, rough_reynolds_number
@@ -93,9 +93,10 @@ molecular_weight_caco3, 0.1009
 initial_h2co3, 0.0001017128
 initial_hco3, 0.02001456
 initial_co3, 1.182197e-6
-initial_ca, 0.01002
+initial_ca, 0.00998003992015968
 initial_caco3, 9.928560000000001e-7
 initial_co2_g, initial_co2_g
+typical_ow, 0.000682155
 biomass_diffusion_coefficient_y, 3.6000000000000003e-6
 biomass_diffusion_coefficient_z, 0.00036
 evaporation_constant, evaporation_constant
