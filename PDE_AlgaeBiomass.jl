@@ -48,7 +48,9 @@ function PDE_AlgaeBiomass!(dX, C, CO2,Temperature, params, t)
     salinity_factor(S) = params.salinity_factor(S)
     pH_factor(Hyd) = params.pH_factor(Hyd)
     bm = params.max_biomass_specific_growth_rate
+    
     phiL(Mz, z, dz_y) = params.phiL(Mz,GHI,z,dz_y)
+    Iave(Mz, z, dz_y) = params.Iave(Mz, GHI, z, dz_y)
     mu(T,S,Mz,z,dz_y,Co2,Hyd) = bm .* phiL(Mz, z, dz_y) .* co2_availability_factor(Co2).*temperature_factor(T).*salinity_factor(S)*pH_factor(Hyd)
     
 
@@ -107,7 +109,6 @@ function PDE_AlgaeBiomass!(dX, C, CO2,Temperature, params, t)
     end
 
     r1(T,S,CO2) = params.r1(T,S,CO2)
-    r2 = params.r2
     r3(T,S,CO2) = params.r3(T,S,CO2)
     r4(T,S,CO2) = params.r4(T,S,CO2)
     K1(T,S) = params.K1(T,S)
@@ -119,44 +120,14 @@ function PDE_AlgaeBiomass!(dX, C, CO2,Temperature, params, t)
     K_pos4(T,S) = params.K_pos4(T,S)
     Ca_o = params.initial_ca
     Ca = ones(Nelements,1)*Ca_o
-    KW = params.KW
 
     pH_max = 14
     pH_min = 1
     step_size = (pH_max - pH_min)*100
-    Hy = zeros(Nelements,1)
-    Hy1 = zeros(step_size,1)
-    Hy2 = zeros(step_size,1)
     x = zeros(step_size,1)
-    r_1 = zeros(Nelements,1)
-    r_3 = zeros(Nelements,1)
-    r_4 = zeros(Nelements,1)
-    Sal2 = ones(Nelements,1)*26.44
     
     
-    #for i in 0:Ny
-        #for j in 0:Nz
-            #r_4[pos2idx(i,j)] = r4(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)], CO2[pos2idx(i,j)])
-            #r_3[pos2idx(i,j)] = r3(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)], CO2[pos2idx(i,j)])
-            #r_1[pos2idx(i,j)] = r1(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)],CO2[pos2idx(i,j)])
-            #Hy1 = zeros(step_size)
-            #for k in 1:step_size
-                #x = collect(LinRange(pH_min,pH_max,step_size))
-                #Hy1[k]  = 10.0^(-x[k])
-            #end
 
-            #for k in 1:step_size
-                #Hy2[k] = r_1[pos2idx(i,j)]*(Hy1[k])^4 .+ r2.*Hy1[k]^3 + r_3[pos2idx(i,j)]*Hy1[k] + r_4[pos2idx(i,j)]
-                
-                #if Hy2[k]*Hy2[max(1,k-1)] <= 0 
-                    #global Hy[pos2idx(i,j)] = max(Hy1[k],10.0^(-Float64(pH_max)))
-                    #break
-                #end
-            #end
-            
-
-        #end
-    #end
     
     molecular_weight_co2 = params.molecular_weight_co2
     co2_to_M = (1/(molecular_weight_co2*1000*1000))
@@ -166,8 +137,39 @@ function PDE_AlgaeBiomass!(dX, C, CO2,Temperature, params, t)
     for i = 0:Ny
         for j = 0:Nz
 
-            pH[pos2idx(i,j)] = min(0.5*(-log10(K2(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)]))-log10(K1(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)]))
-            -log10(max(C[pos2idx(i,j)]*co2_to_uM,1E-10))+log10(1E6)+log10(Kcal(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)]))-log10(Ca[pos2idx(i,j)])),Float64(pH_max))
+            pH[pos2idx(i,j)] = min(0.5*(-log10(K2(Temperature[pos2idx(i,j)],Sal[pos2idx(i,j)]))-log10(K1(Temperature[pos2idx(i,j)],Sal[pos2idx(i,j)]))
+            -log10(max(C[pos2idx(i,j)]*co2_to_uM,1E-10))+log10(1E6)+log10(Kcal(Temperature[pos2idx(i,j)],Sal[pos2idx(i,j)]))-log10(Ca[pos2idx(i,j)])),Float64(pH_max))
+        end
+    end
+
+   
+
+    decay_rate = zeros(Nelements,1)
+    for i = 0:Ny
+        for j = 0:Nz
+            if GHI <= 5
+                    
+                decay_rate[pos2idx(i,j)] = (log(1-0.08)/10); #yields the decay rate 1/(dark period) as a negative decimal, hr-1
+                #0.08 is the %AFDW loss by the P celeri     
+            
+            else 
+                
+                decay_rate[pos2idx(i,j)] = 0; 
+                
+            end 
+        end
+    end
+
+    for i = 0:Ny
+        for j = 0:Nz
+
+
+            if Iave(C[pos2idx(i,0:Nz)],j,dz_v[pos2idx(i,j)]) <= 5
+            
+                decay_rate[pos2idx(i,j)] = (log(1-0.08)/10); #yields the decay rate 1/(dark period) as a negative decimal, hr-1
+                
+                
+            end 
         end
     end
 
@@ -175,11 +177,16 @@ function PDE_AlgaeBiomass!(dX, C, CO2,Temperature, params, t)
     mu_v = zeros(Nelements, 1)
     for i in 0:Ny
         for j in 0:Nz
-            mu_v[pos2idx(i,j)] = mu(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)],C[pos2idx(i,0:Nz)],j,dz_v[pos2idx(i,j)],CO2[pos2idx(i,j)],pH[pos2idx(i,j)])
-            
            
+            mu_v[pos2idx(i,j)] = mu(Temperature[pos2idx(i,j)],Sal[pos2idx(i,j)],C[pos2idx(i,0:Nz)],j,Ht[pos2idx(i,j)],CO2[pos2idx(i,j)],pH[pos2idx(i,j)]) + decay_rate[pos2idx(i,j)]
+    
+            
         end
     end
+
+    
+
+
    
     
 
@@ -206,9 +213,9 @@ function PDE_AlgaeBiomass!(dX, C, CO2,Temperature, params, t)
    
     for j=0:Nz
 
-        dC[pos2idx(Ny,j)] = ( + Dz * (C[pos2idx(Ny,max(0,j-1))] + C[pos2idx(Ny,min(Nz,j+1))] - 2*C[pos2idx(Ny,j)]) / dz_v[pos2idx(Ny,j)]^2
-                            - V_profile[pos2idx(Ny,j)] * (C[pos2idx(Ny,j)] - C[pos2idx(Ny-1,j)]) / dy
-                            )
+        dC[pos2idx(Ny,j)] = ( (+ Dz * (C[pos2idx(Ny,max(0,j-1))] + C[pos2idx(Ny,min(Nz,j+1))] - 2*C[pos2idx(Ny,j)]) / dz_v[pos2idx(Ny,j)]^2)*1000
+                            - V_profile[pos2idx(Ny,j)] *1000* (C[pos2idx(Ny,j)] - C[pos2idx(Ny-1,j)]) / dy
+                            )*(1/1000)
     end
 
     
@@ -217,32 +224,31 @@ function PDE_AlgaeBiomass!(dX, C, CO2,Temperature, params, t)
     for i=1:Ny-1
         
 
-        dC[pos2idx(i,0)] =     ( Dy * (C[pos2idx(i-1,0)] + C[pos2idx(i+1,0)] - 2*C[pos2idx(i,0)]) / dy^2  #small
-                               + Dz * (C[pos2idx(i,0)] + C[pos2idx(i,0+1)] - 2*C[pos2idx(i,0)]) /dz_v[pos2idx(i,0)]^2
-                               - V_profile[pos2idx(i,0)] * ( C[pos2idx(i,0)] - C[pos2idx(i-1,0)] )/dy
-                               + mu_v[pos2idx(i,0)] * C[pos2idx(i,0)]
-                               )
+        dC[pos2idx(i,0)] =     ( (Dy * (C[pos2idx(i-1,0)] + C[pos2idx(i+1,0)] - 2*C[pos2idx(i,0)]) / dy^2  #small
+                               + Dz * (C[pos2idx(i,0)] + C[pos2idx(i,0+1)] - 2*C[pos2idx(i,0)]) /dz_v[pos2idx(i,0)]^2)*1000
+                               - V_profile[pos2idx(i,0)] * ( C[pos2idx(i,0)] - C[pos2idx(i-1,0)] )*1000/dy
+                               + mu_v[pos2idx(i,0)] * C[pos2idx(i,0)]*1000
+                               )*(1/1000)
 
-        dC[pos2idx(i,Nz)] =    ( Dy * (C[pos2idx(i-1,Nz)] + C[pos2idx(i+1,Nz)] - 2*C[pos2idx(i,Nz)]) / dy^2 #small
-                               + Dz * (C[pos2idx(i,Nz-1)] + C[pos2idx(i,Nz)] - 2*C[pos2idx(i,Nz)]) / dz_v[pos2idx(i,Nz)]^2
-                               - V_profile[pos2idx(i,Nz)] * (C[pos2idx(i,Nz)] - C[pos2idx(i-1,Nz)]) / dy
-                               + mu_v[pos2idx(i,Nz)] * C[pos2idx(i,Nz)]
-                               )
+        dC[pos2idx(i,Nz)] =    ( (Dy * (C[pos2idx(i-1,Nz)] + C[pos2idx(i+1,Nz)] - 2*C[pos2idx(i,Nz)]) / dy^2 #small
+                               + Dz * (C[pos2idx(i,Nz-1)] + C[pos2idx(i,Nz)] - 2*C[pos2idx(i,Nz)]) / dz_v[pos2idx(i,Nz)]^2)*1000
+                               - V_profile[pos2idx(i,Nz)] * (C[pos2idx(i,Nz)] - C[pos2idx(i-1,Nz)])*1000 / dy
+                               + mu_v[pos2idx(i,Nz)] * C[pos2idx(i,Nz)]*1000
+                               )*(1/1000)
     end
 
     for i=1:Ny-1
         for j=1:Nz-1
 
-            dC[pos2idx(i,j)] = ( Dy * (C[pos2idx(i-1,j)] + C[pos2idx(i+1,j)] - 2*C[pos2idx(i,j)]) / dy^2
-                               + Dz * (C[pos2idx(i,j-1)] + C[pos2idx(i,j+1)] - 2*C[pos2idx(i,j)]) / dz_v[pos2idx(i,j)]^2
-                               - V_profile[pos2idx(i,j)] * (C[pos2idx(i,j)] - C[pos2idx(i-1,j)]) / dy
-                               + mu_v[pos2idx(i,j)] * C[pos2idx(i,j)]
-                               )
+            dC[pos2idx(i,j)] = ( (Dy * (C[pos2idx(i-1,j)] + C[pos2idx(i+1,j)] - 2*C[pos2idx(i,j)]) / dy^2
+                               + Dz * (C[pos2idx(i,j-1)] + C[pos2idx(i,j+1)] - 2*C[pos2idx(i,j)]) / dz_v[pos2idx(i,j)]^2)*1000
+                               - V_profile[pos2idx(i,j)] * (C[pos2idx(i,j)] - C[pos2idx(i-1,j)])*1000 / dy
+                               + mu_v[pos2idx(i,j)] * C[pos2idx(i,j)]*1000
+                               )*(1/1000)
                   
         end
     end
 
-   
 
     @views dX[1:Nelements] .= dC        # order matters! The @views operator takes a slice out of an array without making a copy.
 

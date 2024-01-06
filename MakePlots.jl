@@ -1,5 +1,5 @@
 
-
+using CSV, Tables
 function Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
     Ny = params.num_odes_y
     Nz = params.num_odes_z
@@ -20,15 +20,15 @@ function Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
     H = params.reactor_initial_liquid_level     # m
     Cinit = params.input_biomass_concentration  # kg/m^3
     Cmax = params.max_biomass_concentration     # kg/m^3
+    Lmax = params.max_biomass_light_saturation
     dy = L/Ny
     
     Y = LinRange(0,L,Ny+1)
-    #Y1 = LinRange(0,dy*Ny,Ny)
     Z = LinRange(0,H,Nz+1)
+    Ieff(Cz, z, H, GHI) = GHI .* 0.45 .*(1 - min(sum(Cz[1:z]*(H/Nz))./ Cmax, 1.0))
+    phiL(Cz, z,H, GHI) = Ieff(Cz, z, H, GHI) .* exp(1 - Ieff(Cz, z, H, GHI)./Lmax)./ Lmax
+
    
-    
-    Ieff(Cz, z, Hgt) = (1 - min(sum(Cz[1:z]) * Hgt / Nz / Cmax, 1.0)) 
-    phiL(Cz, zlist, Hgt) = [Ieff(Cz, z, Hgt) * exp(1 - Ieff(Cz, z, Hgt)) for z in zlist]
     
     GHIout = zeros(TL,1)
     for i in 1:TL
@@ -74,7 +74,7 @@ function Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
 
 
 
-    Q(H,V) = params.volumetric_flow_rate(H,V)       # m^3/hour
+    Q(H,V) = params.volumetric_flow_rate(H,V)      # m^3/hour
     Re(H,T,V) = params.reynolds_number(H,T,V)
     Vavg_lam(H,T) = params.average_flow_velocity_lam(H,T) #m/hr
     Vavg(H,B) =  params.average_flow_velocity(H,B) #m/hr
@@ -91,82 +91,68 @@ function Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
     Hght_out = zeros(TL,Ny+1) #m
 
     #Bd = boundary layer height, m
+    
+
     for i in 1:TL
         for j in 0:Ny
             for k in 0:Nz
-                V_prof_out[i,pos2idx(j,k)] =  params.velocity_profile_lam(dz(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])*k,Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
-                if Re(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)],Vavg_lam(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])) > 500
-                    if Re_star(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)]) <= 4
-                        global Bd = params.boundary_layer_height_1(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
-                    elseif Re_star(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)]) <= 11
-                        global Bd = params.boundary_layer_height_2(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
-                    elseif Re_star(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)]) <= 70
-                        global Bd = params.boundary_layer_height_3(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
-                    else 
-                        global Bd = params.boundary_layer_height_4
-                    end
-                    for i in 1:TL
-                        for j in 0:Ny
-                            Sout[i,pos2idx(j,0)] = Sal(Tout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i],j,Vavg(Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Bd))
-                        end
-                    end
-                    for i in 1:TL
-                        for j in 0:Ny
-                            Ht[i,pos2idx(j,0)] = Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
-                        end
-                    end
-                    for i in 1:TL
-                        for j in 0:Ny
-                            dz_v[i,pos2idx(j,0)] = dz(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
-                        end
-                    end
-                    if k >= 4*Nz/5
-                        V_prof_out[i,pos2idx(j,k)] = params.velocity_profile_nw(dz(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])*k, Ht[i,pos2idx(j,0)], Bd)
-                    else
-                        V_prof_out[i,pos2idx(j,k)] = params.velocity_profile_w(dz(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])*k,Ht[i,pos2idx(j,0)], Bd)
-                    end
+                #V_prof_out[i,pos2idx(j,k)] =  params.velocity_profile_lam(dz(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])*k,Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
+                #if Re(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)],Vavg_lam(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])) > 500
+                    #if Re_star(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)]) <= 4
+                        #global Bd = params.boundary_layer_height_1(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
+                    #elseif Re_star(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)]) <= 11
+                        #global Bd = params.boundary_layer_height_2(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
+                    #elseif Re_star(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)]) <= 70
+                        #global Bd = params.boundary_layer_height_3(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
+                    #else 
+                        #global Bd = params.boundary_layer_height_4
+                    #end
+                    #for i in 1:TL
+                        #for j in 0:Ny
+                            #Sout[i,pos2idx(j,0)] = Sal(Tout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i],j,Vavg(Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Bd))
+                        #end
+                    #end
+                    #for i in 1:TL
+                        #for j in 0:Ny
+                            #Ht[i,pos2idx(j,0)] = Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
+                        #end
+                    #end
+                    #for i in 1:TL
+                        #for j in 0:Ny
+                            #dz_v[i,pos2idx(j,0)] = dz(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
+                        #end
+                    #end
+                    #if k >= 4*Nz/5
+                        #V_prof_out[i,pos2idx(j,k)] = params.velocity_profile_nw(dz(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])*k, Ht[i,pos2idx(j,0)], Bd)
+                    #else
+                        #V_prof_out[i,pos2idx(j,k)] = params.velocity_profile_w(dz(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])*k,Ht[i,pos2idx(j,0)], Bd)
+                    #end
 
-                    for i = 1:TL
-                        for j = 0:Ny
-                            Re_out[i,pos2idx(j,0)] = Re(Ht[i,pos2idx(j,0)],Tambout[i],Vavg(Ht[i,pos2idx(j,0)],Bd))
-                        end
-                    end
-                    for i = 1:TL
-                        for k = 0:Nz
-                            Prod_out[i,pos2idx1(k)] = ((Mout[i,pos2idx(Ny-1,k)]- Cinit)* Q(H_o,Vavg(Ht[i,pos2idx(j,0)],Bd))* 24.0* 1000)/(W*L)
-                        end
-                    end
+                    #for i = 1:TL
+                        #for j = 0:Ny
+                            #Re_out[i,pos2idx(j,0)] = Re(Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tambout[i],Vavg(Ht[i,pos2idx(j,0)],Bd))
+                        #end
+                    #end
+                    
                     
 
-                else
-                    for i in 1:TL
-                        for j in 0:Ny
-                            Sout[i,pos2idx(j,0)] = Sal(Tout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i],j,Vavg_lam(Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,0)]))
-                        end
-                    end
-                    for i in 1:TL
-                        for j in 0:Ny
-                            Ht[i,pos2idx(j,0)] = Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
-                        end
-                    end
-                    for i in 1:TL
-                        for j in 0:Ny
-                            dz_v[i,pos2idx(j,0)] = dz(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
-                        end
-                    end
-                    V_prof_out[i,pos2idx(j,k)] =  params.velocity_profile_lam(dz(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])*k,Ht[i,pos2idx(j,0)],Tout[i,pos2idx(j,k)])
-                    for i = 1:TL
-                        for j = 0:Ny
-                            Re_out[i,pos2idx(j,0)] = Re(Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tambout[i],Vavg_lam(Ht[i,pos2idx(j,0)],Tout[i,pos2idx(j,0)]))
-                        end
-                    end
-                    for i = 1:TL
-                        for k = 0:Nz
-                            Prod_out[i,pos2idx1(k)] = ((Mout[i,pos2idx(Ny-1,k)]- Cinit)* Q(Ht[i,pos2idx(j,0)],Vavg_lam(Ht[i,pos2idx(j,0)],Tout[i,pos2idx(0,k)]))* 24.0* 1000)/(W*L)
-                        end
-                    end
+                #else
                     
-                end
+                    Sout[i,pos2idx(j,0)] = Sal(Tout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i],j,Vavg_lam(Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,0)]))
+                      
+                    Ht[i,pos2idx(j,0)] = Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
+                      
+                   
+                    dz_v[i,pos2idx(j,0)] = dz(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
+                     
+                    V_prof_out[i,pos2idx(j,k)] =  params.velocity_profile_lam(dz_v[i,pos2idx(j,0)]*k,Ht[i,pos2idx(j,0)],Tout[i,pos2idx(j,k)])
+            
+                    Re_out[i,pos2idx(j,0)] = Re(Ht[i,pos2idx(j,0)],Tambout[i],Vavg_lam(Ht[i,pos2idx(j,0)],Tout[i,pos2idx(j,0)]))
+
+                    Prod_out[i,pos2idx1(k)] = ((Mout[i,pos2idx(Ny-1,k)]- Cinit)* Q(Ht[i,pos2idx(j,0)],Vavg_lam(Ht[i,pos2idx(j,0)],Tout[i,pos2idx(0,k)]))* 24.0* 1000)/(W*L)
+                   
+                    
+                #end
             end
         end
     end
@@ -211,8 +197,6 @@ function Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
            
                 pH[i,pos2idx(j,k)] = min(0.5*(-log10(K2(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))-log10(K1(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))
                 -log10(max(CO2_out[i,pos2idx(j,k)]*co2_to_uM,1E-10))+log10(1E6)+log10(Kcal(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))-log10(Ca[pos2idx(j,k)])),Float64(pH_max))
-                #min(0.5*(-log10(K2(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))-log10(K1(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))-log10(max(CO2_out[i,pos2idx(j,k)]*co2_to_M,1E-10))+log10(Kcal(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))-log10(Ca[pos2idx(j,k)])),Float64(pH_max))
-                #pOH[pos2idx(i,j)] = -log10(KW) - pH[i,pos2idx(j,k)]
                 pHCO3[i,pos2idx(j,k)] = -log10(K1(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))-log10(max(CO2_out[i,pos2idx(j,k)]*co2_to_uM,1E-10))+log10(1E6)+pH[i,pos2idx(j,k)]
                 pCO3[i,pos2idx(j,k)] = -log10(K2(Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)]))-pHCO3[i,pos2idx(j,k)]+pH[i,pos2idx(j,k)]
                 
@@ -224,11 +208,12 @@ function Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
         end
     end
 
-    mu_out = zeros(TL, Nelements) #1/hr
+
+    L_out = zeros(TL,Nelements)
     for i = 1:TL
         for j = 0:Ny
             for k = 0:Nz
-                mu_out = mu(Tout[i,pos2idx(j,k)], Sout[i,pos2idx(j,0)], Mout[i,pos2idx(j,0:Nz)], GHIout[i], k, dz_v[i,pos2idx(j,0)], CO2_out[i,pos2idx(j,k)],10^(-pH[i,pos2idx(j,k)]))
+                L_out[i,pos2idx(j,k)] = Ieff(Mout[i,pos2idx(j,0:Nz)], k, Hght_out[i, pos2idx(j, 0)], GHIout[i])
             end
         end
     end
@@ -239,8 +224,9 @@ function Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
     P(C) = Statistics.mean(C[:, pos2idx1(0:Nz)], dims = 2) #Used for average productivity
     Q_a(C) = Statistics.mean(C[:, pos2idx(0:Ny,0)], dims = 2) #Used for average across surface
     R(C) = Statistics.mean(C[:, pos2idx(0:Ny,Nz)], dims = 2) #Used for average across floor
+    S(C) = Statistics.mean(C[:, pos2idx(Ny-1,0:Nz)], dims = 2)
+    Avg(C) = Statistics.mean(C[:, 1], dims = 2)
     
-
 
     p1 = plot(Y,Mout[TL, pos2idx(0:Ny,0)] * 1000.0, xlabel = "Length [m]", ylabel = "Algae Cell Density (g/m^3)", title="Algae Surface Cell Density", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p2 = plot(Y,Mout[TL, pos2idx(0:Ny,Nz)] * 1000.0, xlabel = "Length [m]", ylabel = "Algae Cell Density (g/m^3)", title="Algae Floor Cell Density", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
@@ -252,15 +238,97 @@ function Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
     png("Biomass_AlgaeRiverReactor_$filesuffix")
     savefig(p, "Biomass_AlgaeRiverReactor_$filesuffix.ps")
     Average_Continuous_Productivity = Statistics.mean(P(Prod_out)[max(1,TL-10):TL])
-    @show Average_Continuous_Productivity
+    return Average_Continuous_Productivity
     Average_height = Statistics.mean(Q_a(Hght_out))
     Average_Dilution = Statistics.mean(R(Q_out)[max(1,TL-10):TL])/(W*L*Average_height)
     Average_RT = L/(Statistics.mean(Q_a(Q_out)[max(1,TL-10):TL])/(Average_height*W)) #hr
-    Average_Re = Statistics.mean(Q_a(Re_out)[max(1,TL-10):TL])
+    Average_Vol_Flow = Statistics.mean(R(Q_out)[max(1,TL-10):TL])
+    Average_Re = Statistics.mean(Avg(Re_out)[max(1,TL-10):TL])
     @show Average_RT
     @show Average_Re
     @show Average_Dilution
     @show Average_height
+    @show Average_Vol_Flow
+
+    Topout = zeros(Ny+1,1)
+    xpos = zeros(Ny + 1,1)
+    for i in 0:Ny
+        Topout[i+1,1] = Mout[TL, pos2idx(i,0)]
+        xpos[i+1,1] = i*(L/Ny)
+    end
+
+    Top_table = hcat(Topout, xpos)
+    CSV.write("Reactor_Surface.csv", Tables.table(Top_table), writeheader = false)
+
+    Bottomout = zeros(Ny+1,1)
+    for i in 0:Ny
+        Bottomout[i+1,1] = Mout[TL, pos2idx(i,Nz)]
+    end
+
+    Bottom_table = hcat(Bottomout, xpos)
+    CSV.write("Reactor_Floor.csv", Tables.table(Bottom_table), writeheader = false)
+
+    Vel_out = zeros(Nz + 1, 1)
+    ypos = zeros(Nz + 1,1)
+    for i in 0:Nz
+        Vel_out[i+1,1] = V_prof_out[TL, pos2idx(Ny,i)]
+        ypos[i+1,1] = Hght_out[TL,pos2idx(Ny,0)] - (i*(Hght_out[TL,pos2idx(Ny,0)]/Nz))
+    end
+
+    Vel_table = hcat(Vel_out, ypos)
+    CSV.write("Velocity_Out.csv", Tables.table(Vel_table), writeheader = false)
+
+    Light_out = zeros(Nz + 1, 1)
+    for i in 0:Nz
+        Light_out[i+1,1] = L_out[TL,pos2idx(Ny,i)]
+    end
+
+    L_table = hcat(Light_out, ypos)
+    CSV.write("Light_Out.csv", Tables.table(L_table), writeheader = false)
+
+    Prod_T = zeros(TL)
+    Time = zeros(TL)
+    for i in 1:TL
+        Prod_T[i] = P(Prod_out)[i] #avg at outlet
+        Time[i] = i
+    end
+
+    Prod_TTable = hcat(Prod_T, Time)
+    CSV.write("ProdT_Out.csv", Tables.table(Prod_TTable), writeheader = false)
+
+    Lght_T = zeros(TL)
+    for i in 1:TL
+        Lght_T[i] = S(L_out)[i] #avg at outlet
+    end
+
+    Temp_T = zeros(TL)
+    for i in 1:TL
+        Temp_T[i] = S(Tout)[i]
+    end
+
+    Lght_TTable = hcat(Lght_T, Time)
+    CSV.write("LghtT_Out.csv", Tables.table(Lght_TTable), writeheader = false)
+
+    Temp_TTable = hcat(Temp_T, Time)
+    CSV.write("TempT_Out.csv", Tables.table(Temp_TTable), writeheader = false)
+
+
+    S_T = zeros(TL)
+    for i in 1:TL
+        S_T[i] = Sout[i, Ny] #avg at outlet
+    end
+
+    S_TTable = hcat(S_T, Time)
+    CSV.write("ST_Out.csv", Tables.table(S_TTable), writeheader = false)
+
+    pH_T = zeros(TL)
+    for i in 1:TL
+        pH_T[i] = S(pH)[i] #avg at outlet
+    end
+
+    pH_TTable = hcat(pH_T, Time)
+    CSV.write("pHT_Out.csv", Tables.table(pH_TTable), writeheader = false)
+
 
 
     # Mout2D(z, y), z = 0 is the surface and z = H is the bottom. For plotting, we will invert the z-scale so that z = 0 is the bottom and z = H is the surface.
@@ -270,15 +338,25 @@ function Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
             Mout2D[j+1,i+1] = Mout[TL, pos2idx(i,j)]
         end
     end
-    Average_Specific_Growth = Statistics.mean(Mout2D[1:Ny+1,1:Nz+1])
-    @show Average_Specific_Growth
+
+    Lout2D = zeros(Nz+1,Ny+1)
+    for i in 0:Ny
+        for j in 0:Nz
+            Lout2D[j+1,i+1] = L_out[TL,pos2idx(i,j)]
+        end
+    end
+ 
     Vout2D = zeros(Nz+1,Ny+1)
     for i in 0:Ny
         for j in 0:Nz
             Vout2D[j+1,i+1] = V_prof_out[TL,pos2idx(i,j)]
         end
     end
-    q = heatmap(Y, Z, log10.(Mout2D * 1000.0),
+    CSV.write("Biomass_HM.csv", Tables.table(Mout2D), writeheader = false)
+    CSV.write("Vel_HM.csv", Tables.table(Vout2D), writeheader = false)
+    CSV.write("phiL_HM.csv", Tables.table(Lout2D), writeheader = false)
+
+    q = heatmap(Y, Z, Mout2D,
             yflip=true,
             c=cgrad([:blue, :white,:red, :yellow]),
             xlabel="Length (0 is entry) [m]", ylabel="Liquid Level (0 is surface) [m]",
@@ -287,16 +365,28 @@ function Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
             )
     savefig(q, "BiomassProfile_AlgaeRiverReactor_$filesuffix.ps")
     png("BiomassProfile_AlgaeRiverReactor_$filesuffix")
-    q1 = heatmap(Y,Z, Vout2D./3600,
+    q1 = heatmap(Y,Z, Vout2D,
             yflip=true,
             c=cgrad([:blue, :white,:red, :yellow]),
             xlabel="Length (0 is entry) [m]", ylabel="Liquid Level (0 is surface) [m]",
-            title="Velocity Profile (m/s)",
+            title="Velocity Profile (m/hr)",
             size=(800,400)
             )
     savefig(q1, "VelocityProfile_AlgaeRiverReactor_$filesuffix.ps")
     png("VelocityProfile_AlgaeRiverReactor_$filesuffix")
+
+    q2 = heatmap(Y,Z, Lout2D,
+    yflip=true,
+    c=cgrad([:blue, :white,:red, :yellow]),
+    xlabel="Length (0 is entry) [m]", ylabel="Liquid Level (0 is surface) [m]",
+    title="Light Intensity (W/m2)",
+    size=(800,400)
+    )
+
+    savefig(q2, "LightProfile_AlgaeRiverReactor_$filesuffix.ps")
+    png("LightProfile_AlgaeRiverReactor_$filesuffix")
 end
+
 function Plot_Temperature_Profile(Tout, T, params, filesuffix)
     Ny = params.num_odes_y
     Nz = params.num_odes_z
@@ -365,6 +455,7 @@ function Plot_Temperature_Profile(Tout, T, params, filesuffix)
             Tout2D[j+1,i+1] = Tout[TL, pos2idx(i,j)]
         end
     end
+    CSV.write("Temp_HM.csv", Tables.table(Tout2D), writeheader = false)
     q = heatmap(Y, Z, Tout2D,
             yflip=true,
             c=cgrad([:blue, :white,:red, :yellow]),
@@ -423,7 +514,7 @@ function Plot_CO2_Profile(CO2_out, Tout, T, params, filesuffix)
     Z = LinRange(0,H,Nz+1)
     dy = L/Ny
 
-    Ieff(Cz, z, Hgt) = (1 - min(sum(Cz[1:z]) * Hgt / Nz / Cmax, 1.0))
+    Ieff(Cz, z, Hgt) = (1 - min(sum(Cz[1:z]*(H/Nz))./ Cmax, 1.0))
     phiL(Cz, zlist,Hgt) = [Ieff(Cz, z, Hgt) * exp(1 - Ieff(Cz, z, Hgt)) for z in zlist]
     T_days = T ./ 24.0
     (maxval, maxpos) = findmax(CO2_out[TL,:])
@@ -442,10 +533,23 @@ function Plot_CO2_Profile(CO2_out, Tout, T, params, filesuffix)
     Hght(x,T,S,WNDSPD,RH,P) = params.height(x,T,S,WNDSPD,RH,P,H_o) #m
     dz(x,T,S,WNDSPD,RH,P) = Hght(x,T,S,WNDSPD,RH,P)/Nz #m
 
-   
+    S(C) = Statistics.mean(C[:, pos2idx(Ny-1,0:Nz)], dims = 2)
+
     p1 = plot(Y,CO2_out[TL, pos2idx(0:Ny,0)] , xlabel = "Length [m]", ylabel = "Dissolved CO2 (g/m^3)", title="CO2 Surface Concentration", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p2 = plot(Y,CO2_out[TL, pos2idx(0:Ny,Nz)] , xlabel = "Length [m]", ylabel = "Dissolved CO2 (g/m^3)", title="CO2 Floor Concentration", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     @show 
+    
+    Time = zeros(TL)
+    CO2_T = zeros(TL)
+    for i in 1:TL
+        CO2_T[i] = S(CO2_out)[i] #avg at outlet
+        Time[i] = i
+    end
+
+    CO2_TTable = hcat(CO2_T, Time)
+    CSV.write("CO2T_Out.csv", Tables.table(CO2_TTable), writeheader = false)
+
+
     p = plot(p1, p2, layout=(2,1), legend=false, size=(1200,1200))
     png("CO2_AlgaeRiverReactor_$filesuffix")
     savefig(p, "CO2_AlgaeRiverReactor_$filesuffix.ps")
@@ -456,7 +560,8 @@ function Plot_CO2_Profile(CO2_out, Tout, T, params, filesuffix)
             Cout2D[j+1,i+1] = max(0, CO2_out[TL, pos2idx(i,j)]) # don't allow negative values
         end
     end
-    @show Average_CO2 = Statistics.mean(Cout2D[1:Ny+1,1:Nz+1])
+    CSV.write("CO2_HM.csv", Tables.table(Cout2D), writeheader = false)
+    
     q = heatmap(Y, Z, (Cout2D),
             yflip=true,
             c=cgrad([:blue, :white,:red, :yellow]),
@@ -510,6 +615,9 @@ function Plot_CO2_Profile(CO2_out, Tout, T, params, filesuffix)
             pHout2D[j+1,i+1] = max(0, pH[TL, pos2idx(i,j)]) # don't allow negative values
         end
     end
+
+    CSV.write("pH_HM.csv", Tables.table(pHout2D), writeheader = false)
+
     q1 = heatmap(Y, Z, pHout2D,
         yflip=true,
         c=cgrad([:blue, :white,:red, :yellow]),
@@ -603,7 +711,7 @@ function Plot_Height_Profile(Tout, T, params, filesuffix)
         end
     end
 
-    Q(H,V) = params.volumetric_flow_rate(H,V)       # m^3/hour
+    Q(H,V) = params.volumetric_flow_rate(H,V)      # m^3/hour
     Re(H,T,V) = params.reynolds_number(H,T,V) #dimless
     Vavg_lam(H,T) = params.average_flow_velocity_lam(H,T) #m/hr
     Vavg(H,B) =  params.average_flow_velocity(H,B) #m/hr
@@ -618,74 +726,66 @@ function Plot_Height_Profile(Tout, T, params, filesuffix)
     Sout = zeros(TL, Ny+1) #kg/m3
     V_prof_out = zeros(TL,Nelements) #m/hr
     #Bd = boundary layer height, m
+    
     for i in 1:TL
         for j in 0:Ny
             for k in 0:Nz
-                V_prof_out[i,pos2idx(j,k)] =  params.velocity_profile_lam(dz(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])*k,Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
-                if Re(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)],Vavg_lam(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])) > 500
-                    if Re_star(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)]) <= 4
-                        global Bd = params.boundary_layer_height_1(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
-                    elseif Re_star(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)]) <= 11
-                        global Bd = params.boundary_layer_height_2(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
-                    elseif Re_star(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)]) <= 70
-                        global Bd = params.boundary_layer_height_3(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
-                    else 
-                        global Bd = params.boundary_layer_height_4
-                    end
-                    for i in 1:TL
-                        for j in 0:Ny
-                            Sout[i,pos2idx(j,0)] = Sal(Tout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i],j,Vavg(Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Bd))
-                        end
-                    end
-                    for i in 1:TL
-                        for j in 0:Ny
-                            Ht[i,pos2idx(j,0)] = Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
-                        end
-                    end
-                    for i in 1:TL
-                        for j in 0:Ny
-                            dz_v[i,pos2idx(j,0)] = dz(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
-                        end
-                    end
-                    if k >= 4*Nz/5
-                        V_prof_out[i,pos2idx(j,k)] = params.velocity_profile_nw(dz(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])*k, Ht[i,pos2idx(j,0)], Bd)
-                    else
-                        V_prof_out[i,pos2idx(j,k)] = params.velocity_profile_w(dz(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])*k,Ht[i,pos2idx(j,0)], Bd)
-                    end
+                #V_prof_out[i,pos2idx(j,k)] =  params.velocity_profile_lam(dz(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])*k,Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
+                #if Re(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)],Vavg_lam(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])) > 500
+                    #if Re_star(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)]) <= 4
+                        #global Bd = params.boundary_layer_height_1(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
+                    #elseif Re_star(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)]) <= 11
+                        #global Bd = params.boundary_layer_height_2(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
+                    #elseif Re_star(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)]) <= 70
+                        #global Bd = params.boundary_layer_height_3(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
+                    #else 
+                        #global Bd = params.boundary_layer_height_4
+                    #end
+                    #for i in 1:TL
+                        #for j in 0:Ny
+                            #Sout[i,pos2idx(j,0)] = Sal(Tout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i],j,Vavg(Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Bd))
+                        #end
+                    #end
+                    #for i in 1:TL
+                        #for j in 0:Ny
+                            #Ht[i,pos2idx(j,0)] = Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
+                        #end
+                    #end
+                    #for i in 1:TL
+                        #for j in 0:Ny
+                            #dz_v[i,pos2idx(j,0)] = dz(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
+                        #end
+                    #end
+                    #if k >= 4*Nz/5
+                        #V_prof_out[i,pos2idx(j,k)] = params.velocity_profile_nw(dz(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])*k, Ht[i,pos2idx(j,0)], Bd)
+                    #else
+                        #V_prof_out[i,pos2idx(j,k)] = params.velocity_profile_w(dz(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])*k,Ht[i,pos2idx(j,0)], Bd)
+                    #end
 
-                    for i = 1:TL
-                        for j = 0:Ny
-                            Re_out[i,pos2idx(j,0)] = Re(Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tambout[i],Vavg(Ht[i,pos2idx(j,0)],Bd))
-                        end
-                    end
-                   
+                    #for i = 1:TL
+                        #for j = 0:Ny
+                            #Re_out[i,pos2idx(j,0)] = Re(Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tambout[i],Vavg(Ht[i,pos2idx(j,0)],Bd))
+                        #end
+                    #end
+                    
                     
 
-                else
-                    for i in 1:TL
-                        for j in 0:Ny
-                            Sout[i,pos2idx(j,0)] = Sal(Tout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i],j,Vavg_lam(Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,0)]))
-                        end
-                    end
-                    for i in 1:TL
-                        for j in 0:Ny
-                            Ht[i,pos2idx(j,0)] = Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
-                        end
-                    end
-                    for i in 1:TL
-                        for j in 0:Ny
-                            dz_v[i,pos2idx(j,0)] = dz(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
-                        end
-                    end
-                    V_prof_out[i,pos2idx(j,k)] =  params.velocity_profile_lam(dz(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])*k,Ht[i,pos2idx(j,0)],Tout[i,pos2idx(j,k)])
-                    for i = 1:TL
-                        for j = 0:Ny
-                            Re_out[i,pos2idx(j,0)] = Re(Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tambout[i],Vavg_lam(Ht[i,pos2idx(j,0)],Tout[i,pos2idx(j,0)]))
-                        end
-                    end
+                #else
+                    
+                    Sout[i,pos2idx(j,0)] = Sal(Tout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i],j,Vavg_lam(Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,0)]))
+                      
+                    Ht[i,pos2idx(j,0)] = Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
+                      
+                   
+                    dz_v[i,pos2idx(j,0)] = dz(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
+                     
+                    V_prof_out[i,pos2idx(j,k)] =  params.velocity_profile_lam(dz_v[i,pos2idx(j,0)]*k,Ht[i,pos2idx(j,0)],Tout[i,pos2idx(j,k)])
+            
+                    Re_out[i,pos2idx(j,0)] = Re(Ht[i,pos2idx(j,0)],Tambout[i],Vavg_lam(Ht[i,pos2idx(j,0)],Tout[i,pos2idx(j,0)]))
+                    
                    
                     
-                end
+                #end
             end
         end
     end
@@ -709,6 +809,25 @@ function Plot_Height_Profile(Tout, T, params, filesuffix)
         end
     end
     
+    Hout2D = zeros(Nz+1, Ny+1)
+    for i in 0:Ny
+        for j in 0:Nz
+            Hout2D[j+1,i+1] = max(0, Hght_out[TL, pos2idx(i,0)]) # don't allow negative values
+        end
+    end
+
+
+    CSV.write("Height_HM.csv", Tables.table(Hout2D), writeheader = false)
+
+    q1 = heatmap(Y, Z, Hout2D,
+        yflip=true,
+        c=cgrad([:blue, :white,:red, :yellow]),
+        xlabel="Length (0 is entry) [m]", ylabel="Liquid Level (0 is surface) [m]",
+        title="Height [m]",
+        size=(800,400)
+    )
+    savefig(q1, "heightProfile_AlgaeRiverReactor_$filesuffix.ps")
+    png("heightProfile_AlgaeRiverReactor_$filesuffix")
   
     T_days = T ./ 24.0
     (maxval, maxpos) = findmax(Hght_out[TL,:])
@@ -806,74 +925,85 @@ function Plot_Salinity_Profile(Tout, T, params, filesuffix)
     for i in 1:TL
         for j in 0:Ny
             for k in 0:Nz
-                V_prof_out[i,pos2idx(j,k)] =  params.velocity_profile_lam(dz(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])*k,Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
-                if Re(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)],Vavg_lam(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])) > 500
-                    if Re_star(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)]) <= 4
-                        global Bd = params.boundary_layer_height_1(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
-                    elseif Re_star(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)]) <= 11
-                        global Bd = params.boundary_layer_height_2(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
-                    elseif Re_star(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)]) <= 70
-                        global Bd = params.boundary_layer_height_3(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
-                    else 
-                        global Bd = params.boundary_layer_height_4
-                    end
-                    for i in 1:TL
-                        for j in 0:Ny
-                            Sout[i,pos2idx(j,0)] = Sal(Tout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i],j,Vavg(Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Bd))
-                        end
-                    end
-                    for i in 1:TL
-                        for j in 0:Ny
-                            Ht[i,pos2idx(j,0)] = Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
-                        end
-                    end
-                    for i in 1:TL
-                        for j in 0:Ny
-                            dz_v[i,pos2idx(j,0)] = dz(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
-                        end
-                    end
-                    if k >= 4*Nz/5
-                        V_prof_out[i,pos2idx(j,k)] = params.velocity_profile_nw(dz(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])*k, Ht[i,pos2idx(j,0)], Bd)
-                    else
-                        V_prof_out[i,pos2idx(j,k)] = params.velocity_profile_w(dz(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])*k,Ht[i,pos2idx(j,0)], Bd)
-                    end
+                #V_prof_out[i,pos2idx(j,k)] =  params.velocity_profile_lam(dz(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])*k,Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
+                #if Re(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)],Vavg_lam(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])) > 500
+                    #if Re_star(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)]) <= 4
+                        #global Bd = params.boundary_layer_height_1(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
+                    #elseif Re_star(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)]) <= 11
+                        #global Bd = params.boundary_layer_height_2(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
+                    #elseif Re_star(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)]) <= 70
+                        #global Bd = params.boundary_layer_height_3(Hght(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,k)])
+                    #else 
+                        #global Bd = params.boundary_layer_height_4
+                    #end
+                    #for i in 1:TL
+                        #for j in 0:Ny
+                            #Sout[i,pos2idx(j,0)] = Sal(Tout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i],j,Vavg(Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Bd))
+                        #end
+                    #end
+                    #for i in 1:TL
+                        #for j in 0:Ny
+                            #Ht[i,pos2idx(j,0)] = Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
+                        #end
+                    #end
+                    #for i in 1:TL
+                        #for j in 0:Ny
+                            #dz_v[i,pos2idx(j,0)] = dz(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
+                        #end
+                    #end
+                    #if k >= 4*Nz/5
+                        #V_prof_out[i,pos2idx(j,k)] = params.velocity_profile_nw(dz(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])*k, Ht[i,pos2idx(j,0)], Bd)
+                    #else
+                        #V_prof_out[i,pos2idx(j,k)] = params.velocity_profile_w(dz(j,Tout[i,pos2idx(j,k)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])*k,Ht[i,pos2idx(j,0)], Bd)
+                    #end
 
-                    for i = 1:TL
-                        for j = 0:Ny
-                            Re_out[i,pos2idx(j,0)] = Re(Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tambout[i],Vavg(Ht[i,pos2idx(j,0)],Bd))
-                        end
-                    end
+                    #for i = 1:TL
+                        #for j = 0:Ny
+                            #Re_out[i,pos2idx(j,0)] = Re(Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tambout[i],Vavg(Ht[i,pos2idx(j,0)],Bd))
+                        #end
+                    #end
                     
                     
 
-                else
-                    for i in 1:TL
-                        for j in 0:Ny
-                            Sout[i,pos2idx(j,0)] = Sal(Tout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i],j,Vavg_lam(Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,0)]))
-                        end
-                    end
-                    for i in 1:TL
-                        for j in 0:Ny
-                            Ht[i,pos2idx(j,0)] = Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
-                        end
-                    end
-                    for i in 1:TL
-                        for j in 0:Ny
-                            dz_v[i,pos2idx(j,0)] = dz(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
-                        end
-                    end
+                #else
+                    
+                    Sout[i,pos2idx(j,0)] = Sal(Tout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i],j,Vavg_lam(Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i]),Tout[i,pos2idx(j,0)]))
+                      
+                    Ht[i,pos2idx(j,0)] = Hght(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
+                      
+                   
+                    dz_v[i,pos2idx(j,0)] = dz(j,Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i])
+                     
                     V_prof_out[i,pos2idx(j,k)] =  params.velocity_profile_lam(dz_v[i,pos2idx(j,0)]*k,Ht[i,pos2idx(j,0)],Tout[i,pos2idx(j,k)])
-                    for i = 1:TL
-                        for j = 0:Ny
-                            Re_out[i,pos2idx(j,0)] = Re(Ht[i,pos2idx(j,0)],Tambout[i],Vavg_lam(Ht[i,pos2idx(j,0)],Tout[i,pos2idx(j,0)]))
-                        end
-                    end
+            
+                    Re_out[i,pos2idx(j,0)] = Re(Ht[i,pos2idx(j,0)],Tambout[i],Vavg_lam(Ht[i,pos2idx(j,0)],Tout[i,pos2idx(j,0)]))
+                    
                    
                     
-                end
+                #end
             end
         end
     end
+
+    Sout2D = zeros(Nz+1, Ny+1)
+    for i in 0:Ny
+        for j in 0:Nz
+            Sout2D[j+1,i+1] = max(0, Sout[TL, pos2idx(i,0)]) # don't allow negative values
+        end
+    end
+
+
+    CSV.write("Sal_HM.csv", Tables.table(Sout2D), writeheader = false)
+
+    q1 = heatmap(Y, Z, Sout2D,
+        yflip=true,
+        c=cgrad([:blue, :white,:red, :yellow]),
+        xlabel="Length (0 is entry) [m]", ylabel="Liquid Level (0 is surface) [m]",
+        title="Salinity (kg/m3)",
+        size=(800,400)
+    )
+    savefig(q1, "SalinityHM_AlgaeRiverReactor_$filesuffix.ps")
+    png("SalinityHM_AlgaeRiverReactor_$filesuffix")
     
 
     P(S) = Statistics.mean(S[:,pos2idx(0:Ny,0)], dims = 2) #mean salinity across reactor, kg/m3
