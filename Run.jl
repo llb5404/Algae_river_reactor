@@ -1,7 +1,10 @@
 
 # the Revise package allows you to rerun code after making variable/function/method changes without re-compiling everything
-using Revise
+using Revise, Tables,CSV
 using Debugger
+using RCall
+
+@rlibrary seacarb
 
 break_on(:error)
 
@@ -9,11 +12,14 @@ _revise_mode__ = :eval
 
 include("AlgaeRiverReactor.jl")
 using .AlgaeRiverReactor
-productivity_v = zeros(8,3)
-vol_fl_v = [0.005; 0.010; 0.015; 0.020; 0.025; 0.030; 0.035; 0.040]
-len_v = [15; 30; 45; 60; 75; 90; 105; 120]
-co2_v = [0.1; 0.2; 0.3; 0.4; 0.5; 0.6; 0.7; 0.8]
-for l = 1:8
+
+
+productivity_v = zeros(14,3)
+vol_fl_v = [0.450,0.425,0.400,0.375,0.350,0.325,0.300,0.275,0.250,0.225,0.200,0.175,0.150,0.125]
+len_v = [15, 30, 45, 60, 75, 90, 105, 120] 
+co2_v = [250, 500, 750, 1000, 1250, 1500, 1750, 2000]
+
+for l = 1:length(vol_fl_v)
     Revise.track("AlgaeRiverReactor.jl")
     Revise.track("LoadParameters.jl")
     Revise.track("PDE_AlgaeBiomass.jl")
@@ -23,13 +29,13 @@ for l = 1:8
 
     @show Revise.watched_files
 
-    productivity_v[l,1] = AlgaeRiverReactor.Run(l, 5, 5, 1)
+    productivity_v[l,1] = AlgaeRiverReactor.Run(l, 1, 1, 1)
     @show argmax(productivity_v[:,1])
 end
 
 idx = argmax(productivity_v[:,1])
 
-for q = 1:8
+for q = 1:length(len_v)
     Revise.track("AlgaeRiverReactor.jl")
     Revise.track("LoadParameters.jl")
     Revise.track("PDE_AlgaeBiomass.jl")
@@ -39,12 +45,12 @@ for q = 1:8
 
     @show Revise.watched_files
 
-    productivity_v[q,2] = AlgaeRiverReactor.Run(idx, q, 5, 2)
+    productivity_v[q,2] = AlgaeRiverReactor.Run(idx, q, 1, 2)
 end
 
 idx1 = argmax(productivity_v[:,2])
 
-for t = 1:8
+for q = 1:length(co2_v)
     Revise.track("AlgaeRiverReactor.jl")
     Revise.track("LoadParameters.jl")
     Revise.track("PDE_AlgaeBiomass.jl")
@@ -54,18 +60,18 @@ for t = 1:8
 
     @show Revise.watched_files
 
-    productivity_v[q,3] = AlgaeRiverReactor.Run(idx, idx1, t, 3)
+    productivity_v[q,3] = AlgaeRiverReactor.Run(idx, idx1, q, 3)
     @show productivity_v
 end
 
  
-vol_v_prod_table = hcat(productivity_v[:,1], vol_fl_v)
+vol_v_prod_table = hcat(productivity_v[1:length(vol_fl_v),1], vol_fl_v)
 CSV.write("vol_v_prod.csv", Tables.table(vol_v_prod_table), writeheader = false)
 
-len_v_prod_table = hcat(productivity_v[:,2], len_v)
+len_v_prod_table = hcat(productivity_v[1:length(len_v),2], len_v)
 CSV.write("len_v_prod.csv", Tables.table(len_v_prod_table), writeheader = false)
 
-co2_v_prod_table = hcat(productivity_v[:,3], co2_v)
+co2_v_prod_table = hcat(productivity_v[1:length(co2_v),3], co2_v)
 CSV.write("co2_v_prod.csv", Tables.table(co2_v_prod_table), writeheader = false)
 
 

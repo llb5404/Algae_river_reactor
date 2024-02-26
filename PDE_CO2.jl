@@ -1,4 +1,5 @@
-using Polynomials
+using RCall, ModelingToolkit
+@rlibrary seacarb
 function PDE_CO2!(dX, C, C_biomass, Temperature, params, t)
     #Units for params can be found in LoadParameters.jl
     GHI_Data = params.global_horizontal_irradiance_data
@@ -16,8 +17,9 @@ function PDE_CO2!(dX, C, C_biomass, Temperature, params, t)
     RH = RH_Data[data_begin + t_hour1] * (t-t_hour1) + RH_Data[data_begin + t_hour2] * (t_hour2 - t)
     WNDSPD = max.((WNDSPD_Data[data_begin + t_hour1] * (t-t_hour1) + WNDSPD_Data[data_begin + t_hour2] * (t_hour2 - t)),0)
 
-    mu_model(T,S,M_biomass_z,z,dz,C_co2,Hyd) = params.biomass_specific_growth_rate(T, S, M_biomass_z, GHI, z, dz, C_co2,Hyd)
+    mu_model(T,S,C_co2) = params.biomass_specific_growth_rate(T, S, C_co2)
     co2_per_biomass = params.co2_per_biomass
+    bm = params.max_biomass_specific_growth_rate
     L = params.reactor_length
     W = params.reactor_width
     H = params.reactor_initial_liquid_level
@@ -29,119 +31,56 @@ function PDE_CO2!(dX, C, C_biomass, Temperature, params, t)
     dy = L / Ny
 
     D_co2 = params.diffusion_coeff_co2_water    #m^2 / hr, depends on Temperature
-    S_co2 = params.solubility_co2_water         #mole fraction of dissolved CO2 in water at equilibrium, depends on Temperature.
-    density_water = params.density_water        # kg / m^3, depends on Temperature.
-    molecular_weight_water = params.molecular_weight_water
     P_a = params.saturated_vapor_pressure_water_air(Tamb) 
 
     #density to M conversions
-    molecular_weight_co2 = params.molecular_weight_co2
-    co2_to_M = (1/(molecular_weight_co2*1000*1000)) #converts from g/m3 to mol/L: mol*m3/kg-L
-    co2_to_uM = co2_to_M*1E6
-
-
+    molecular_weight_co2 = params.molecular_weight_co2*1000 #g/mol
+ 
     #initial concentrations
-    co2_g_o(T,S) = params.initial_co2_g(T,S)
 
 
     Nelements = (Ny+1) * (Nz+1)
-    C = max.(C, 0.0) #don't allow negative values
+    Nelements1 = Ny+1
+    C = max.(C, 1E-12) #don't allow negative values
     dCO2 = zeros(Nelements, 1)
-    H_o = params.reactor_initial_liquid_level
     K(T,S) = params.dVavgdx(T,S,RH,WNDSPD,P_a)
     M_Evap(T) = params.evaporation_mass_flux(T,WNDSPD,RH,P_a)
     rho_solution(S) = params.density_solution(Tamb,S)
     S(T,x,V) = params.salinity(T,WNDSPD,RH,P_a,x,V)
 
    
-
-    Hght(x,T,S) = params.height(x,T,S,WNDSPD,RH,P_a,H_o)
-    dz(x,T,S) = Hght(x,T,S)/Nz
+    Hght(T,x,V) = params.height(T,WNDSPD,RH,P_a,x,V)
+    dz(T,x,V) = Hght(T,x,V)/Nz
 
     ##Velocity Profile
     Re(H,T,V) = params.reynolds_number(H,T,V)
-    Re_star(H,T) = params.rough_reynolds_number(H,T)
     V_profile = zeros(Nelements, 1)
-    Vavg_lam(H,T) = params.average_flow_velocity_lam(H,T)
-    Vavg(H,B) = params.average_flow_velocity(H,B)
-    dz_v = zeros(Nelements,1)
-    Sal = zeros(Nelements, 1)
-    Ht = zeros(Nelements,1)
+    Vavg = zeros(Nelements1)
+
+    for i = 0:Ny
+        Vavg[pos2idx(i,0)] = params.avg_velocity(Temperature[pos2idx(i,0)],i,params.mass_o(Temperature[pos2idx(i,0)]))
+    end
+
+    dz_v = zeros(Ny + 1,1)
+    Sal = zeros(Ny + 1, 1)
+    Ht = zeros(Ny + 1,1)
     R_co2 = zeros(Nelements,1)
     mu_v = zeros(Nelements, 1)
 
-
     for i in 0:Ny
-        for j in 0:Nz
-            #cut-off for laminar flow = 500
-            if Re(Hght(i,Temperature[pos2idx(i,j)],S(Temperature[pos2idx(i,j)],i,V_profile[pos2idx(i,j)])),Temperature[pos2idx(i,j)],Vavg_lam(Ht[pos2idx(i,j)],Temperature[pos2idx(i,j)])) > 500
-                #Turbulent Flow: choose boundary layer thickness based on "rough reynolds number"
-                if Re_star(Hght(i,Temperature[pos2idx(i,j)],S(Temperature[pos2idx(i,j)],i,V_profile[pos2idx(i,j)])),Temperature[pos2idx(i,j)]) <= 4
-                    global Bd = params.boundary_layer_height_1(Ht[pos2idx(i,j)],Temperature[pos2idx(i,j)]) #boundary layer, m
-                elseif Re_star(Hght(i,Temperature[pos2idx(i,j)],S(Temperature[pos2idx(i,j)],i,V_profile[pos2idx(i,j)])),Temperature[pos2idx(i,j)]) <= 11
-                    global Bd = params.boundary_layer_height_2(Ht[pos2idx(i,j)],Temperature[pos2idx(i,j)]) #boundary layer, m
-                elseif Re_star(Hght(i,Temperature[pos2idx(i,j)],S(Temperature[pos2idx(i,j)],i,V_profile[pos2idx(i,j)])),Temperature[pos2idx(i,j)]) <= 70
-                    global Bd = params.boundary_layer_height_3(Ht[pos2idx(i,j)],Temperature[pos2idx(i,j)]) #boundary layer, m
-                else 
-                    global Bd = params.boundary_layer_height_4 #boundary layer, m
-                end
-
-                #salinity
-                Sal[pos2idx(i,j)] = S(Temperature[pos2idx(i,j)],i,Vavg(Ht[pos2idx(i,j)],Bd)) #kg/m3
-                #height 
-                Ht[pos2idx(i,j)] = Hght(i,Temperature[pos2idx(i,0)],Sal[pos2idx(i,j)]) #m
-                #increments in z direction
-                dz_v[pos2idx(i,j)] = dz(i,Temperature[pos2idx(i,0)],Sal[pos2idx(i,j)]) #m
+    
             
-                if j >= 4*Nz/5 #bottom 20% of channel
-                    V_profile[pos2idx(i,j)] = params.velocity_profile_nw(dz_v[pos2idx(i,j)]*j, Ht[pos2idx(i,j)], Bd) #non-wake flow, m/hr
-                else
-                    V_profile[pos2idx(i,j)] = params.velocity_profile_w(dz_v[pos2idx(i,j)]*j,Ht[pos2idx(i,j)], Bd) #wake flow in rest of channel, m/hr
-                end
-                
-
-            else
-                Sal[pos2idx(i,j)] = S(Temperature[pos2idx(i,j)],i,Vavg_lam(Ht[pos2idx(i,j)],Temperature[pos2idx(i,j)]))
-               
-                dz_v[pos2idx(i,j)] = dz(i,Temperature[pos2idx(i,0)],Sal[pos2idx(i,j)])
-                Ht[pos2idx(i,j)] = Hght(i,Temperature[pos2idx(i,0)],Sal[pos2idx(i,j)])
-                   
-                V_profile[pos2idx(i,j)] =  params.velocity_profile_lam(dz_v[pos2idx(i,j)]*j,Ht[pos2idx(i,j)],Temperature[pos2idx(i,j)])
-                Bd = 0
-                 
-            end
-        end
+                #salinity
+            Sal[pos2idx(i,0)] = S(Temperature[pos2idx(i,0)],i,Vavg[pos2idx(i,0)]) #kg/m3
+                #height 
+            Ht[pos2idx(i,0)] = Hght(Temperature[pos2idx(i,0)],i,Vavg[pos2idx(i,0)]) #m
+                #increments in z direction
+            dz_v[pos2idx(i,0)] = dz(Temperature[pos2idx(i,0)],i,Vavg[pos2idx(i,0)]) #m
+            
+            
+           
+     
     end
-
-    r1(T,S,CO2) = params.r1(T,S,CO2)
-    r2 = params.r2
-    r3(T,S,CO2) = params.r3(T,S,CO2)
-    r4(T,S,CO2) = params.r4(T,S,CO2)
-    K1(T,S) = params.K1(T,S)
-    K2(T,S) = params.K2(T,S)
-    Kcal(T,S) = params.Kcal(T,S)
-    K_neg1(T,S) = params.K_neg1(T,S)
-    K_pos1(T) = params.K_pos1(T)
-    K_neg4(T,S) = params.K_neg4(T,S)
-    K_pos4(T,S) = params.K_pos4(T,S)
-   
-    KW = params.KW
-
-    pH_max = 14
-    pH_min = 4
-    step_size = (pH_max - pH_min)*400
-    Hy = zeros(Nelements,1)
-    Hy1 = zeros(step_size,1)
-    Hy2 = zeros(step_size,1)
-    x = zeros(step_size,1)
-    r_1 = zeros(Nelements,1)
-    r_3 = zeros(Nelements,1)
-    r_4 = zeros(Nelements,1)
-    Sal2 = ones(Nelements,1)*26.44
-    
-    
-    
-    
 
     co2_availability_factor(C_co2) = params.co2_availability_factor(C_co2)
    
@@ -155,122 +94,95 @@ function PDE_CO2!(dX, C, C_biomass, Temperature, params, t)
     #BC1: CO2(y,z)  at y = 0 is constant [CO2_in]
     #     dCO2(y,z) at y = 0 is zero.
 
+    wavelength = zeros(301,1)
+    absorbance = zeros(301,1)
+    percent_light = zeros(301,1)
     
-    pH = zeros(Nelements,1)
-    pCO3 = zeros(Nelements,1)
-    pHCO3 = zeros(Nelements,1)
-    Disoc = zeros(Nelements,1)
-    TC = zeros(Nelements,1)
-    Ca_o = params.initial_ca
-    Ca = ones(Nelements,1)*Ca_o
-    HCO3 = zeros(Nelements,1)
-    CO3 = zeros(Nelements,1)
-    dHCO3 = zeros(Nelements,1)
-    dCO3 = zeros(Nelements,1)
-   
+    csv_reader1 = CSV.File("WAVE_ABS.csv", header=["col1", "col2","col3"])
+    for (i,row) in enumerate(csv_reader1)
+        wavelength[i] = convert(Float64, row.col1) #nm 400-700
+        absorbance[i] = convert(Float64, row.col2) #m2/mol
+        percent_light[i] = convert(Float64,row.col3)
+    end
+
+    Conc_New(M_biomass_z,z) = (sum(M_biomass_z[1:z])/z)
+    C_new = zeros(Nelements,1)
     for i = 0:Ny
         for j = 0:Nz
-           
-                pH[pos2idx(i,j)] = min(0.5*(-log10(K2(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)]))-log10(K1(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)]))
-                -log10(max(C[pos2idx(i,j)]*co2_to_uM,1E-10))+log10(1E6)+log10(Kcal(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)]))-log10(Ca[pos2idx(i,j)])),Float64(pH_max))
-                #min(0.5*(-log10(K2(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)]))-log10(K1(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)]))-log10(max(C[pos2idx(i,j)]*co2_to_M,1E-10))+log10(Kcal(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)]))-log10(Ca[pos2idx(i,j)])),Float64(pH_max))
-                #pOH[pos2idx(i,j)] = -log10(KW) - pH[pos2idx(i,j)]
-                pHCO3[pos2idx(i,j)] = -log10(K1(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)]))-log10(max(C[pos2idx(i,j)]*co2_to_uM,1E-10))+log10(1E6)+pH[pos2idx(i,j)]
-                pCO3[pos2idx(i,j)] = -log10(K2(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)]))-pHCO3[pos2idx(i,j)]+pH[pos2idx(i,j)]
-                HCO3[pos2idx(i,j)] = 10^(-pHCO3[pos2idx(i,j)])*1E6 #uM
-                CO3[pos2idx(i,j)] = 10^(-pCO3[pos2idx(i,j)])*1E6 #uM
-                
-                #total carbon concentration is original carbon concentration
-                #[CO2_old] = [CO2_new] + [HCO3] + [CO3]
-                #dC = [CO2_new]-[CO2_old] = -[HCO3_new]-[CO3]
-                Disoc[pos2idx(i,j)] = 0
-                #((K_neg1(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)])*(10^(-pH[pos2idx(i,j)]))*1E6 + K_neg4(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)]))*(10^(-pHCO3[pos2idx(i,j)]))*1E6 
-                #- (K_pos1(Temperature[pos2idx(i,j)]) + K_neg4(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)])*(10^(14-pH[pos2idx(i,j)]))*1E6)*C[pos2idx(i,j)]*co2_to_M*1E6)*(1/(co2_to_M*1E6))
-               
-                TC[pos2idx(i,j)] = 10^(-pHCO3[pos2idx(i,j)]) + 10^(-pCO3[pos2idx(i,j)]) + C[pos2idx(i,j)]*co2_to_M
-           
+            C_new[pos2idx(i,j)] = Conc_New(C_biomass[pos2idx(i,0:Nz)],j+1) #average concentration of biomass at depth, kg/m3
         end
     end
 
-    for i in 0:Ny
-        for j in 0:Nz
-            mu_v[pos2idx(i,j)] = mu_model(Temperature[pos2idx(i,j)],Sal2[pos2idx(i,j)],C[pos2idx(i,0:Nz)],j,dz_v[pos2idx(i,j)],C[pos2idx(i,j)],pH[pos2idx(i,j)]) #1/hr
-            
+    watt_to_umolm2s = 0.425*4.6
+
+    I_avg_vec = zeros(301,Nelements)
+
+    for i = 1:301
+        for j = 0:Ny
+            I_avg_vec[i,pos2idx(j,0)] = GHI*watt_to_umolm2s*percent_light[i]
+            for k = 1:Nz
+                I_avg_vec[i,pos2idx(j,k)] = GHI*watt_to_umolm2s*percent_light[i]*exp(-absorbance[i]*C_new[pos2idx(j,k)]*k*dz_v[pos2idx(j,0)])
+                
+            end
         end
     end
-  
-    R_co2 = zeros(Nelements,1)
-    for i in 1:Ny
-      for j in 1:Nz
-        R_co2[pos2idx(i,j)] = co2_per_biomass * mu_v[pos2idx(i,j)] * C_biomass[j]
-      end
+
+    I_avg = zeros(Nelements,1)
+    Y_xphm = 1.38/24 #maximal biomass yield on light, molx/mol
+    a_x = 4.81 #absorbance cross section, m2/mol
+
+    phiL = zeros(Nelements,1)
+
+    for i = 0:Ny
+        for j = 0:Nz
+            I_avg[pos2idx(i,j)] = sum(I_avg_vec[1:301,pos2idx(i,j)])
+            phiL[pos2idx(i,j)] = tanh((Y_xphm*a_x*I_avg[pos2idx(i,j)]*1E-06)/(bm*(1/3600))) #umol to mol
+            mu_v[pos2idx(i,j)] = phiL[pos2idx(i,j)]*mu_model(Temperature[pos2idx(i,j)],Sal[pos2idx(i,0)],C[pos2idx(i,j)])-0.003621  #1/hr
+            R_co2[pos2idx(i,j)] = co2_per_biomass * mu_v[pos2idx(i,j)] * (C_biomass[pos2idx(i,j)]*1000) #uptake of co2 by biomass, g/m3/hr 
+            V_profile[pos2idx(i,j)] = params.velocity_profile_lam(Vavg[pos2idx(i,0)],j,Ht[pos2idx(i,0)]) #non-wake flow, m/hr
+        end
     end
 
     for i = 1:Ny
-        C[pos2idx(i,0)] =  co2_g_o(Temperature[pos2idx(i,0)],Sal2[pos2idx(i,0)])
-        #(S_co2(Temperature[pos2idx(i,0)])* density_water(Temperature[pos2idx(i,0)])* molecular_weight_co2/ molecular_weight_water)
+        C[pos2idx(i,0)] =  params.co2_init #initial CO2
         dCO2[pos2idx(i,0)] = 0
         
-      end
+    end
 
     #y = dy .. Ny,  z = 0 or z = Nz
+    mol_frac(T,C_co2,H) = params.y_out(T,C_co2,H)
+    dMt(T,C_co2,H) = params.dMt(T,C_co2,H) 
+    
+    DIC_in = params.DIC_init
+    CO2_in = params.co2_init
+    mw_co2 = params.molecular_weight_co2
+    co2_to_M = (1/(mw_co2*1000)) #g/m3 to mol/m3
+    co2_to_M1 = (1/(mw_co2*1000*1000)) #g/m3 to mol/L
+    DIC = zeros(Nelements,1)
+
+    for i=1:Ny
+        for j=1:Nz
+            dCO2[pos2idx(i,j)]=  (D_co2(Temperature[pos2idx(i,j)]) * (C[pos2idx(i-1,j)] + C[pos2idx(min(i+1,Ny),j)] - 2*C[pos2idx(i,j)]) / dy^2           #diffusion CO2 in y-direction
+                                   + D_co2(Temperature[pos2idx(i,j)]) * (C[pos2idx(i,j-1)] + C[pos2idx(i,min(j+1,Nz))] - 2*C[pos2idx(i,j)]) / dz_v[pos2idx(i,0)]^2             #diffusion CO2 in z-direction
+                                   - V_profile[pos2idx(i,j)] * (C[pos2idx(i,j)] - C[pos2idx(i-1,j)]) / dy                           #convection of CO2 in y-direction
+                                   + ((dMt(Temperature[pos2idx(i,j)],C[pos2idx(i,j)],Ht[pos2idx(i,0)]))*molecular_weight_co2)/(W*L*Ht[pos2idx(i,0)]) #CO2 transfer from sparging
+                                   - (R_co2[pos2idx(i,j)])                                                 #consumption of CO2 by biomass growth
+                                   
+                                 )
+
+            DIC[pos2idx(i,j)] = 1000*DIC_in + (C[pos2idx(i,j)] - CO2_in)*co2_to_M*1000 #umol/L
+                          
+        end
+    end
     for i = 1:Ny
         for j = 1:Nz
-
-            dCO3[pos2idx(i,j)] = ( - (V_profile[pos2idx(i,j)]) * (CO3[pos2idx(i,j)] - CO3[pos2idx(i-1,j)]) / dy - dCO2[pos2idx(i,j)]*co2_to_uM - dHCO3[pos2idx(i,j)] )
-
-            dHCO3[pos2idx(i,j)] = ( - (V_profile[pos2idx(i,j)]) * (HCO3[pos2idx(i,j)] - HCO3[pos2idx(i-1,j)]) / dy - dCO2[pos2idx(i,j)]*co2_to_uM - dCO3[pos2idx(i,j)] )                                         #convection of CO2 at bottom (zero)
+            C[pos2idx(i,j)] = params.CO2_interp(DIC[pos2idx(i,j)]) #g/m3
         end
     end
     
-    
-    for i=1:Ny-1
-
-        dCO2[pos2idx(i,Nz)] =  ( ((+ D_co2(Temperature[pos2idx(i,Nz)]) * (C[pos2idx(i-1,Nz)] + C[pos2idx(i+1,Nz)] - 2*C[pos2idx(i,Nz)]) / dy^2 #small     #diffusion CO2 in y-direction
-                                 + D_co2(Temperature[pos2idx(i,Nz)]) * (C[pos2idx(i,Nz-1)] + C[pos2idx(i,Nz)] - 2*C[pos2idx(i,Nz)]) / dz_v[pos2idx(i,Nz)]^2)*1000              #diffusion CO2 in z-direction
-                                 - V_profile[pos2idx(i,Nz)]*1000 * (C[pos2idx(i,Nz)] - C[pos2idx(i-1,Nz)]) / dy                                         #convection of CO2 at bottom (zero)
-                                 - R_co2[pos2idx(i,Nz)]*1000                                                    #consumption of CO2 by biomass growth
-                                 + Disoc[pos2idx(i,Nz)])*co2_to_uM
-                                 - dCO3[pos2idx(i,Nz)]*1000
-                                 - dHCO3[pos2idx(i,Nz)]*1000
-                               )*(1/(co2_to_uM*1000))
-                               
-           
-    end
-
-    
-    dCO2[pos2idx(Ny,Nz)] =     ( ((+ D_co2(Temperature[pos2idx(Ny,Nz)]) * (C[pos2idx(Ny-1,Nz)] + C[pos2idx(Ny,Nz)] - 2*C[pos2idx(Ny,Nz)]) / dy^2 #small       #diffusion CO2 in y-direction
-                                 + D_co2(Temperature[pos2idx(Ny,Nz)]) * (C[pos2idx(Ny,Nz-1)] + C[pos2idx(Ny,Nz)] - 2*C[pos2idx(Ny,Nz)]) / dz_v[pos2idx(Ny,Nz)]^2)*1000              #diffusion CO2 in z-direction
-                                 - V_profile[pos2idx(Ny,Nz)] * (C[pos2idx(Ny,Nz)] - C[pos2idx(Ny-1,Nz)])*1000 / dy                                         #convection of CO2 at bottom (zero)
-                                 - R_co2[pos2idx(Ny,Nz)]*1000                                                  #consumption of CO2 by biomass growth
-                                 + Disoc[pos2idx(Ny,Nz)])*co2_to_uM
-                                 - dCO3[pos2idx(Ny,Nz)]*1000
-                                 - dHCO3[pos2idx(Ny,Nz)]*1000
-                               )*(1/(co2_to_uM*1000))
-                               
-    for i=1:Ny-1
-        for j=1:Nz-1
-            dCO2[pos2idx(i,j)]=  ( ((D_co2(Temperature[pos2idx(i,j)]) * (C[pos2idx(i-1,j)] + C[pos2idx(i+1,j)] - 2*C[pos2idx(i,j)]) / dy^2           #diffusion CO2 in y-direction
-                                   + D_co2(Temperature[pos2idx(i,j)]) * (C[pos2idx(i,j-1)] + C[pos2idx(i,j+1)] - 2*C[pos2idx(i,j)]) / dz_v[pos2idx(i,j)]^2)*1000             #diffusion CO2 in z-direction
-                                   - V_profile[pos2idx(i,j)] * (C[pos2idx(i,j)] - C[pos2idx(i-1,j)])*1000 / dy                           #convection of CO2 in y-direction
-                                   - (R_co2[pos2idx(i,j)])*1000                                                 #consumption of CO2 by biomass growth
-                                   + Disoc[pos2idx(i,j)])*co2_to_uM
-                                   - dCO3[pos2idx(i,j)]*1000
-                                   - dHCO3[pos2idx(i,j)]*1000
-                                 )*(1/(co2_to_uM*1000))
-
-                                 
-
-                    
-                     
-        end
-    end
-    
-
-
-
-
-
     @views dX[1+2*Nelements:3*Nelements] .= dCO2        # order matters! The @views operator takes a slice out of an array without making a copy.
     nothing
 end
+
+
+
