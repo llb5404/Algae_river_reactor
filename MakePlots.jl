@@ -329,8 +329,8 @@ function Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
             title="Velocity Profile (m/hr)",
             size=(800,400)
             )
-    savefig(q1, "VelocityProfile_AlgaeRiverReactor_$filesuffix.ps")
-    png("VelocityProfile_AlgaeRiverReactor_$filesuffix")
+    savefig(q1, "VelocityProfile_AlgaeRiverReactor.ps")
+    png("VelocityProfile_AlgaeRiverReactor")
 
     q2 = heatmap(Y,Z, Lout2D,
     yflip=true,
@@ -340,8 +340,8 @@ function Plot_Biomass_Profile(Mout, CO2_out, Tout, T, params, filesuffix)
     size=(800,400)
     )
 
-    savefig(q2, "LightProfile_AlgaeRiverReactor_$filesuffix.ps")
-    png("LightProfile_AlgaeRiverReactor_$filesuffix")
+    savefig(q2, "LightProfile_AlgaeRiverReactor.ps")
+    png("LightProfile_AlgaeRiverReactor")
 
     return Average_Continuous_Productivity
 end
@@ -405,8 +405,8 @@ function Plot_Temperature_Profile(Tout, T, params, filesuffix)
     p8 = plot(T, RHout, xlabel = "Time [hours]", ylabel = "Relative Humidity (RH) [%]", title = "Relative Humidity", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p9 = plot(T, Tambout, xlabel = "Time [hours]", ylabel = "Ambient Temperature (Tamb) [K]", title = "Ambient Temperature", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p = plot(p1, p2, p3, p4, p5, p6, p7, p8, p9, layout=(9,1), legend=false, size=(1600,1600))
-    png("Thermal_AlgaeRiverReactor_$filesuffix")
-    savefig(p, "Thermal_AlgaeRiverReactor_$filesuffix.ps")
+    png("Thermal_AlgaeRiverReactor")
+    savefig(p, "Thermal_AlgaeRiverReactor.ps")
     # Mout(y,z), z = 0 is the surface and z = H is the bottom. For plotting, we will invert the z-scale so that z = 0 is the bottom and z = H is the surface.
     Tout2D = zeros(Nz+1, Ny+1)
     for i in 0:Ny
@@ -422,10 +422,10 @@ function Plot_Temperature_Profile(Tout, T, params, filesuffix)
             title="Temperature (K)",
             size=(800,400)
             )
-    savefig(q, "TemperatureProfile_AlgaeRiverReactor_$filesuffix.ps")
-    png("TemperatureProfile_AlgaeRiverReactor_$filesuffix")
+    savefig(q, "TemperatureProfile_AlgaeRiverReactor.ps")
+    png("TemperatureProfile_AlgaeRiverReactor")
 end
-function Plot_CO2_Profile(CO2_out, Tout, T, params, filesuffix)
+function Plot_CO2_Profile(CO2_out, DIC_out,Tout, T, params, filesuffix)
     Ny = params.num_odes_y
     Nz = params.num_odes_z
     Nelements = (Ny+1) * (Nz+1)
@@ -501,8 +501,8 @@ function Plot_CO2_Profile(CO2_out, Tout, T, params, filesuffix)
 
 
     p = plot(p1, p2, layout=(2,1), legend=false, size=(1200,1200))
-    png("CO2_AlgaeRiverReactor_$filesuffix")
-    savefig(p, "CO2_AlgaeRiverReactor_$filesuffix.ps")
+    png("CO2_AlgaeRiverReactor")
+    savefig(p, "CO2_AlgaeRiverReactor.ps")
     # Cout(y,z), z = 0 is the surface and z = H is the bottom. For plotting, we will invert the z-scale so that z = 0 is the bottom and z = H is the surface.
     Cout2D = zeros(Nz+1, Ny+1)
     for i in 0:Ny
@@ -541,11 +541,10 @@ function Plot_CO2_Profile(CO2_out, Tout, T, params, filesuffix)
     DIC_in = params.DIC_init
     CO2_in = params.co2_init
     mw_co2 = 0.04401*1000 #g/mol
-
+    
     for i =1:TL
         for j = 0:Ny
             for k = 0:Nz
-                DIC_out2[tpos2idx2(i,j,k)] = DIC_in*1000 + (CO2_out[i,pos2idx(j,k)] - CO2_in)*(1/mw_co2)*1000
                 T_out2[tpos2idx2(i,j,k)] = Tout[i,pos2idx(j,k)]
             end
         end
@@ -562,11 +561,11 @@ function Plot_CO2_Profile(CO2_out, Tout, T, params, filesuffix)
             end
         end
     end
-    
+
     for i = 1:TL
         for j = 0:Ny
             for k = 0:Nz
-                pH[i,pos2idx(j,k)] = params.pH_interp(DIC_out2[tpos2idx2(i,j,k)]) #takes input in umol/L
+                pH[i,pos2idx(j,k)] = params.pH_interp(max(DIC_out[i,pos2idx(j,k)],1E-09)) #takes input in umol/L
             end
         end
     end
@@ -763,8 +762,8 @@ function Plot_Height_Profile(Tout, T, params, filesuffix)
         title="Height [m]",
         size=(800,400)
     )
-    savefig(q1, "heightProfile_AlgaeRiverReactor_$filesuffix.ps")
-    png("heightProfile_AlgaeRiverReactor_$filesuffix")
+    savefig(q1, "heightProfile_AlgaeRiverReactor.ps")
+    png("heightProfile_AlgaeRiverReactor")
   
     T_days = T ./ 24.0
     (maxval, maxpos) = findmax(Hght_out[TL,:])
@@ -779,8 +778,8 @@ function Plot_Height_Profile(Tout, T, params, filesuffix)
     p5 = plot(T,S(Kterm_out), xlabel = "Time [hours]", ylabel = "Average Counter-Evaporation Rate [kg/m2-hr]", title="Average counter-evaporation rate over time", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p6 = plot(T,S(Cum_Evap_Loss), xlabel = "Time [hours]", ylabel = "Average Cumulative Water Loss [kg]", title="Average cumulative water loss over time", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p = plot(p1, p2, p3, p4, p5,p6, layout=(6,1), legend=false, size=(1200,1200))
-    png("Height_AlgaeRiverReactor_$filesuffix")
-    savefig(p, "Height_AlgaeRiverReactor_$filesuffix.ps")
+    png("Height_AlgaeRiverReactor")
+    savefig(p, "Height_AlgaeRiverReactor.ps")
     # Cout(y,z), z = 0 is the surface and z = H is the bottom. For plotting, we will invert the z-scale so that z = 0 is the bottom and z = H is the surface.
     
 end
@@ -903,8 +902,8 @@ function Plot_Salinity_Profile(Tout, T, params, filesuffix)
         title="Salinity (kg/m3)",
         size=(800,400)
     )
-    savefig(q1, "SalinityHM_AlgaeRiverReactor_$filesuffix.ps")
-    png("SalinityHM_AlgaeRiverReactor_$filesuffix")
+    savefig(q1, "SalinityHM_AlgaeRiverReactor.ps")
+    png("SalinityHM_AlgaeRiverReactor")
     
 
     P(S) = Statistics.mean(S[:,pos2idx(0:Ny,0)], dims = 2) #mean salinity across reactor, kg/m3
@@ -914,6 +913,6 @@ function Plot_Salinity_Profile(Tout, T, params, filesuffix)
     p2 = plot(T, P(Sout), xlabel = "Time [hours]", ylabel = "Average Salinity (kg/m^3)", title = "Average Reactor Salinity over Time", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
 
     p = plot(p1, p2, layout=(2,1), legend=false, size=(1200,1200))
-    png("Salinity_AlgaeRiverReactor_$filesuffix")
-    savefig(p, "Salinity_AlgaeRiverReactor_$filesuffix.ps")
+    png("Salinity_AlgaeRiverReactor")
+    savefig(p, "Salinity_AlgaeRiverReactor.ps")
 end

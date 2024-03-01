@@ -1,6 +1,6 @@
 
 using ModelingToolkit
-function PDE_AlgaeBiomass!(dX, C, CO2,Temperature, params, t)
+function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
     #Units for params can be found in LoadParameters.jl
     
     GHI_Data = params.global_horizontal_irradiance_data
@@ -11,6 +11,8 @@ function PDE_AlgaeBiomass!(dX, C, CO2,Temperature, params, t)
     t_hour1 = floor(Int64, t)
     t_hour2 = floor(Int64, t)+1
 
+    CO2 = max.(CO2, 1E-09)
+    DIC = max.(DIC, 1E-09)
     
     data_begin = params.data_begin
 
@@ -137,18 +139,23 @@ function PDE_AlgaeBiomass!(dX, C, CO2,Temperature, params, t)
         end
     end
 
+    
+    mw_co2 = params.molecular_weight_co2
+    co2_to_M = (1/(mw_co2*1000)) #g/m3 to mol/m3
+    pH = zeros(Nelements,1)
+
     #Vector of specific growth rate values
     mu_v = zeros(Nelements, 1)
     for i in 0:Ny
         for j in 0:Nz
-           
+            pH[pos2idx(i,j)] = params.pH_interp(DIC[pos2idx(i,j)] + CO2[pos2idx(i,j)]*co2_to_M*1000)
             mu_v[pos2idx(i,j)] = phiL[pos2idx(i,j)]*mu(Temperature[pos2idx(i,j)],Sal[pos2idx(i,j)],CO2[pos2idx(i,j)]) -0.003621
     
             
         end
     end
-
     
+
 
 
    

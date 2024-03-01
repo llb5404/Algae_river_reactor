@@ -16,8 +16,8 @@ function LoadDefaultParameters(filesuffix, l, q, t)
     
     
     ## PDE Discretization
-    num_odes_y = 5
-    num_odes_z = 5
+    num_odes_y = 10
+    num_odes_z = 25
     time_end = 1020       #hours
     time_interval = 1.0     #hours
     ## Physical Constants
@@ -110,7 +110,7 @@ function LoadDefaultParameters(filesuffix, l, q, t)
     surface_humidity_ratio(T) = 0.62198*(saturated_vapor_pressure_water_air(T)/(reference_pressure-saturated_vapor_pressure_water_air(T))) #kg H2O/kg dry air
     evaporation_mass_flux(T,W,R_H,P) = evaporation_constant(W)*(surface_humidity_ratio(T)-ambient_humidity_ratio(R_H, P)) #kg H2O/m2-hr
     
-    flow_rates = [0.450,0.425,0.400,0.375,0.350,0.325,0.300,0.275,0.250,0.225,0.200,0.175,0.150,0.125] #m3/hr
+    flow_rates = [0.800,0.700,0.600,0.500,0.400,0.300,0.200,0.100] #m3/hr
     length_flow = length(flow_rates)
     volumetric_flow_rate_o = flow_rates[l] #m^3/hr
     avg_velocity_o = volumetric_flow_rate_o/(reactor_initial_liquid_level*reactor_width)
@@ -158,13 +158,14 @@ function LoadDefaultParameters(filesuffix, l, q, t)
     photosynthetic_efficiency = 0.025                   # fraction of sunlight converted to chemical energy during photosynthesis
     Vol(dz) = (reactor_length/num_odes_y)*dz*reactor_width #m3
     
-    co2_availability_factor(C_co2) = (C_co2/(molecular_weight_co2*1000)) ./ ((C_co2/(molecular_weight_co2*1000)) + 0.00036 + (C_co2/(molecular_weight_co2*1000))^2/(10)) #unitless, input is CO2 in g/m3
+    co2_availability_factor(C_co2) = (C_co2) ./ ((C_co2) + 4.26 + (C_co2)^2/(250)) #unitless, input is CO2 in g/m3
+
     biomass_specific_growth_rate(T, S, C_co2) = max_biomass_specific_growth_rate .* co2_availability_factor(C_co2).*temperature_factor(T).*salinity_factor(S) #1/hr
     
     
     co2_per_biomass = 1.88   #kg CO2/kg algae
     
-    co2_v = [400,350,300,250,200,100,75,50] #kg gas /hr
+    co2_v = [400,350,300,250,200,100,75,40] #kg gas /hr
     pH_init = 8 
     P_atm = 1 #atm
     PO3 = (0.1E-03)/1000 #mol/kg soln, https://resourcewatch.org/data/explore/f1aa9ec7-c3b6-441c-b395-96fc796b7612?section=Discover&selectedCollection=&zoom=2.422253880286214&lat=51.07099144291875&lng=-85.84319789585153&pitch=0&bearing=0&basemap=dark&labels=light&layers=%255B%257B%2522dataset%2522%253A%2522f1aa9ec7-c3b6-441c-b395-96fc796b7612%2522%252C%2522opacity%2522%253A1%252C%2522layer%2522%253A%25221122cdbf-cb73-467a-bb25-ad86ac491136%2522%257D%255D&aoi=&page=1&sort=most-viewed&sortDirection=-1
@@ -181,7 +182,7 @@ function LoadDefaultParameters(filesuffix, l, q, t)
      
     end
  
-    vector1 = range(1E-09,50000,1000) #uses DIC
+    vector1 = range(1E-09,51000,1000) #uses DIC
 
     pH_interp = LinearInterpolator(vector1, pH_inter_data) #function that uses DIC as input, pH as output
 
@@ -191,7 +192,7 @@ function LoadDefaultParameters(filesuffix, l, q, t)
         CO2_inter_data[i] = convert(Float64, row.col1)*(1/co2_to_M)    #g/m3
     end
 
-    CO2_interp = LinearInterpolator(vector1, CO2_inter_data) #function that uses DIC as input, CO2 as output
+    CO2_interp = LinearInterpolator(vector1, CO2_inter_data) #function that uses DIC as input, CO2 in mol/L as output
     
     ##https://www.iaea.org/sites/default/files/18/07/oa-chemistry-dickson-050916.pdf
 
@@ -214,20 +215,21 @@ function LoadDefaultParameters(filesuffix, l, q, t)
     salinity_in = (1023.6 - density_water(298))
 
     ##co2 properties
-    mol_frac_co2 = 1.00 #mol frac of CO2 in gas phase
+    mol_frac_co2 = 0.15 #mol frac of CO2 in gas phase
     mol_frac_air = 1-mol_frac_co2
     kg_mol_gas = mol_frac_co2*(1/molecular_weight_co2) + mol_frac_air*(1/molecular_weight_air) #kg gas/mol
+    rho_gas = 1.298 #kg gas/m3
     vol_flr_gas = co2_v[t] #kg gas /hr
     G = (vol_flr_gas/kg_mol_gas) #molar flow of gas, mol/hr
     henry_const(T) = 0.035*exp(2400*((1/T) - (1/298.5)))*density_water(T)*(1/0.987)*(1/1000) #henry' constant (mol/L/atm)
     kla_CO2 = 0.0020*3600 #hr-1
-    A = reactor_width*(reactor_length) #m2
-
-    y_out(T,C,H) = min((1/henry_const(T))*(C*co2_to_M+(mol_frac_co2*henry_const(T) - C*co2_to_M)*exp(-kla_CO2*(A/G)*H*henry_const(T)*1000)),1) #C in mol/L
+    A = reactor_width*(reactor_length/num_odes_y)
+    y_out(T,C,H) = (1/henry_const(T))*(C*co2_to_M+(mol_frac_co2*henry_const(T) - C*co2_to_M)*exp(-kla_CO2*(A/G)*H*henry_const(T)*1000)) #C in mol/L
     dMt(T,C,H) = G*(mol_frac_co2 - y_out(T,C,H)) #mol/hr
+    #https://www.sciencedirect.com/science/article/pii/S0960852412012047?casa_token=Dg_MAh0F[%E2%80%A6]RwNik8I_cva5L1jX7aB20_ytLrzqUqHu6U7HcAf2xvkFgdibxBymq8QiTI
 
     co2_init = 0.4756 #g/m3
-    DIC_init = 2.002 #mol/m3
+    DIC_init = 2002 #umol/L
 
     salinity_o = (1023.6 - density_water(298))/density_water(298) #kg salt/kg water, obtained from "density of seawater @ 25 oC
     salinity(T,W,R_H,P,x,V) = density_water(T)*salinity_o*(((density_water(T)*(volumetric_flow_rate_o))/(density_water(T)*(volumetric_flow_rate_o)-evaporation_mass_flux(T,W,R_H,P)*reactor_width*x*(reactor_length/num_odes_y)))) #kg/m3
