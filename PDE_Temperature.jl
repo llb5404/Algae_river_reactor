@@ -1,4 +1,4 @@
-using ModelingToolkit
+
 function HeatTransfer!(dX, T, params, t)
     #Units for params can be found in LoadParameters.jl
     GHI_Data = params.global_horizontal_irradiance_data
@@ -50,15 +50,13 @@ function HeatTransfer!(dX, T, params, t)
     K(T,S) = params.dVavgdx(T,S,RH,WNDSPD,P_a)
     M_Evap(T) = params.evaporation_mass_flux(T,WNDSPD,RH,P_a)
 
-    Hght(T,x,V) = params.height(T,WNDSPD,RH,P_a,x,V)
-    dz(T,x,V) = Hght(T,x,V)/Nz
+    Hght(T,x,S) = params.height(T,S,RH,WNDSPD,P_a,x)
+    dz(T,x,S) = Hght(T,x,S)/Nz
 
    ## Velocity Profile
 
     Re(H,T,V) = params.reynolds_number(H,T,V)
-    #Re_star(H,T) = params.rough_reynolds_number(H,T)
     V_profile = zeros(Nelements, 1)
-    #Vavg_lam(H,T) = params.average_flow_velocity_lam(H,T)
     pressure = params.saturated_vapor_pressure_water_air(Tamb)
     init_mass = params.mass_o(Tamb)
     init_vel = params.avg_velocity_o
@@ -67,67 +65,36 @@ function HeatTransfer!(dX, T, params, t)
     Vavg = zeros(Nelements1)
     M = zeros(Nelements1)
 
-    #for k = 1:99
-        #for i = 0:Ny
-            #Vavg_sol[pos2idx(i,0),k+1] = params.avg_velocity(T[pos2idx(i,0)],i,M_sol[pos2idx(i,0),k])
-            #M_sol[pos2idx(i,0),k+1] = params.mass(T[pos2idx(i,0)],WNDSPD,RH,pressure,i,Vavg_sol[pos2idx(i,0),k])
-        #end
-    #end
-
-    for i = 0:Ny
-        #Vavg[pos2idx(i,0)] = Vavg_sol[pos2idx(i,0),100]
-        #M[pos2idx(i,0)] = M_sol[pos2idx(i,0),100]
-        M[pos2idx(i,0)] = params.mass_o(T[pos2idx(i,0)])
-        Vavg[pos2idx(i,0)] = params.avg_velocity(T[pos2idx(i,0)],i,M[pos2idx(i,0)])
-    end
-
-    S(T,x,V) = params.salinity(T,WNDSPD,RH,P_a,x,V)
+ 
+ 
+    S(T,x) = params.salinity(T,RH,WNDSPD,P_a,x)
     dz_v = zeros(Nelements,1)
     Sal = zeros(Nelements, 1)
     Ht = zeros(Nelements,1)
 
     for i in 0:Ny
         for j in 0:Nz
-            #cut-off for laminar flow = 500
-            #if Re(Hght(i,Temperature[pos2idx(i,j)],S(Temperature[pos2idx(i,j)],i,V_profile[pos2idx(i,j)])),Temperature[pos2idx(i,j)],Vavg_lam(Ht[pos2idx(i,j)],Temperature[pos2idx(i,j)])) > 500
-                #Turbulent Flow: choose boundary layer thickness based on "rough reynolds number"
-                #if Re_star(Hght(i,Temperature[pos2idx(i,j)],S(Temperature[pos2idx(i,j)],i,V_profile[pos2idx(i,j)])),Temperature[pos2idx(i,j)]) <= 4
-                    #global Bd = params.boundary_layer_height_1(Ht[pos2idx(i,j)],Temperature[pos2idx(i,j)]) #boundary layer, m
-                #elseif Re_star(Hght(i,Temperature[pos2idx(i,j)],S(Temperature[pos2idx(i,j)],i,V_profile[pos2idx(i,j)])),Temperature[pos2idx(i,j)]) <= 11
-                    #global Bd = params.boundary_layer_height_2(Ht[pos2idx(i,j)],Temperature[pos2idx(i,j)]) #boundary layer, m
-                #elseif Re_star(Hght(i,Temperature[pos2idx(i,j)],S(Temperature[pos2idx(i,j)],i,V_profile[pos2idx(i,j)])),Temperature[pos2idx(i,j)]) <= 70
-                    #global Bd = params.boundary_layer_height_3(Ht[pos2idx(i,j)],Temperature[pos2idx(i,j)]) #boundary layer, m
-                #else 
-                    #global Bd = params.boundary_layer_height_4 #boundary layer, m
-                #end
-
+           
                 #salinity
-                Sal[pos2idx(i,j)] = S(T[pos2idx(i,j)],i,Vavg[pos2idx(i,0)]) #kg/m3
+                Sal[pos2idx(i,j)] = S(T[pos2idx(i,j)],i) #kg/m3
                 #height 
-                Ht[pos2idx(i,j)] = Hght(T[pos2idx(i,j)],i,Vavg[pos2idx(i,0)]) #m
-                #increments in z direction
-                dz_v[pos2idx(i,j)] = dz(T[pos2idx(i,j)],i,Vavg[pos2idx(i,0)]) #m
-            
-                #if j >= 4*Nz/5 #bottom 20% of channel
-                    V_profile[pos2idx(i,j)] = params.velocity_profile_lam(Vavg[pos2idx(i,0)],j,Ht[pos2idx(i,j)]) #non-wake flow, m/hr
-               #else
-                    #V_profile[pos2idx(i,j)] = params.velocity_profile_w(dz_v[pos2idx(i,j)]*j,Ht[pos2idx(i,j)], Bd) #wake flow in rest of channel, m/hr
-                #end
 
-            #else
-                #Sal[pos2idx(i,j)] = S(Temperature[pos2idx(i,j)],i,Vavg_lam(Ht[pos2idx(i,j)],Temperature[pos2idx(i,j)]))
-               
-                #dz_v[pos2idx(i,j)] = dz(i,Temperature[pos2idx(i,0)],Sal[pos2idx(i,j)])
-                #Ht[pos2idx(i,j)] = Hght(i,Temperature[pos2idx(i,0)],Sal[pos2idx(i,j)])
-                   
-                #V_profile[pos2idx(i,j)] =  params.velocity_profile_lam(dz_v[pos2idx(i,j)]*j,Ht[pos2idx(i,j)],Temperature[pos2idx(i,j)])
-                #Bd = 0
-                
-            #end
+                Vavg[pos2idx(i,0)] = params.avg_velocity(T[pos2idx(i,0)], Sal[pos2idx(i,0)], RH, WNDSPD, P_a,i)
+
+                Ht[pos2idx(i,j)] = Hght(T[pos2idx(i,j)],i,Sal[pos2idx(i,j)]) #m
+                #increments in z direction
+                dz_v[pos2idx(i,j)] = dz(T[pos2idx(i,j)],i,Sal[pos2idx(i,j)]) #m
+
+                if Re(Ht[pos2idx(0,0)],T[pos2idx(0,0)],Vavg[pos2idx(0,0)]) > 2000
+                    V_profile[pos2idx(i,j)] = Vavg[pos2idx(i,0)]
+                else
+                    V_profile[pos2idx(i,j)] = params.velocity_profile_lam(Vavg[pos2idx(i,0)],j,Ht[pos2idx(i,j)])
+                end
+            
+    
         end
     end
     
-
 
     #This function defines the heat flux from direct solar radiation
 
@@ -188,14 +155,12 @@ function HeatTransfer!(dX, T, params, t)
  
         # BC 2
         dT[pos2idx(i, 0)] = (  (k_water*(T[pos2idx(i-1, 0)] - 2*T[pos2idx(i, 0)] + T[pos2idx(min(Ny,i+1), 0)]) / dy^2    #conduction in y-dir
-                             #+ k_water*(T[pos2idx(i, 0)] + T[pos2idx(i,0+1)] - 2*T[pos2idx(i, 0)]) / dz_v[pos2idx(i,0)]^2               #conduction in z-dir at boundary
                              + Q_sum1(T[pos2idx(i,0)]) * dy * W)                                                        #heat generation at boundary
                              - V_profile[pos2idx(i,0)] * ( T[pos2idx(i,0)] - T[pos2idx(i-1,0)]) / dy                                       #heat convection at boundary
                              ) / (rho_water * cp_water)
 
         # BC 3
         dT[pos2idx(i, Nz)] = (  (k_water*(T[pos2idx(i-1, Nz)] - 2*T[pos2idx(i, Nz)] + T[pos2idx(min(Ny,i+1), Nz)]) / dy^2 #conduction in y-dir
-                              #+ k_water*(T[pos2idx(i, Nz-1)] + T[pos2idx(i,Nz)] - 2*T[pos2idx(i, Nz)]) / dz_v[pos2idx(i,Nz)]^2            #conduction in z-dir at boundary
                               + Q_sum2(T[pos2idx(i,Nz)]) * dy * W)                                                       #heat generation at boundary
                               - V_profile[pos2idx(i,Nz)]*(T[pos2idx(i,Nz)] - T[pos2idx(i-1,Nz)])/ dy                                        #heat convection at boundary
                              ) / (rho_water*cp_water)
@@ -205,10 +170,6 @@ function HeatTransfer!(dX, T, params, t)
 
         dT[pos2idx(0, j)] = 0 
 
-        #dT[pos2idx(Ny, j)] = (  k_water * (T[pos2idx(Ny, max(0,j-1))] - 2*T[pos2idx(Ny,j)] + T[pos2idx(Ny, min(Nz,j+1))]) / dz_v[pos2idx(Ny,j)]^2    #conduction in z-dir
-                              #+ k_water * (T[pos2idx(Ny-1, j)] - 2*T[pos2idx(Ny,j)] + T[pos2idx(Ny,j)]) / dy^2                      #conduction in y-dir at boundary
-                              #- V_profile[pos2idx(Ny,j)] / dy                                      #heat convection at boundary
-                             #) / (rho_water*cp_water)
     end
 
     for i=1:Ny

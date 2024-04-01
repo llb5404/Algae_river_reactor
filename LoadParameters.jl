@@ -5,19 +5,13 @@
 #   Load parameters from an Excel file
 
 using Debugger
-using Polynomials
-using RCall
 using BasicInterpolators
-@rlibrary seacarb
 break_on(:error)
 
 function LoadDefaultParameters(filesuffix, l, q, t)
-    
-    
-    
     ## PDE Discretization
-    num_odes_y = 10
-    num_odes_z = 25
+    num_odes_y = 25
+    num_odes_z = 10
     time_end = 1020       #hours
     time_interval = 1.0     #hours
     ## Physical Constants
@@ -97,45 +91,39 @@ function LoadDefaultParameters(filesuffix, l, q, t)
 
     ## River Reactor Geometric Properties
 
-    lengths = [60, 75, 90, 105, 120,135,150,165]                           # meters
+    lengths = [10,20,30,40,50,60,70,80]                           # meters
     reactor_length = lengths[q]
 
     reactor_width =  0.5                               # meters
     reactor_initial_liquid_level = 0.15             # meters, this is the sluice gate inlet height
     reactor_depth = 0   # meters
-    height_diff = 0  # meters, 1 cm between start and end, practically 0
+    height_diff = 0  # meters, 1 mm between start and end, practically 0
 
     evaporation_constant(W) = 25 +19*W #kg dry air/m2-hr
     ambient_humidity_ratio(R_H, P) = 0.62198*(P*(R_H/100))/(reference_pressure-(P*(R_H/100))) #kg H2O/ kg dry air
     surface_humidity_ratio(T) = 0.62198*(saturated_vapor_pressure_water_air(T)/(reference_pressure-saturated_vapor_pressure_water_air(T))) #kg H2O/kg dry air
     evaporation_mass_flux(T,W,R_H,P) = evaporation_constant(W)*(surface_humidity_ratio(T)-ambient_humidity_ratio(R_H, P)) #kg H2O/m2-hr
     
-    flow_rates = [0.800,0.700,0.600,0.500,0.400,0.300,0.200,0.100] #m3/hr
+    flow_rates = [2.5,5,7.5,10,12.5,15,17.5,20] #m3/hr
     length_flow = length(flow_rates)
     volumetric_flow_rate_o = flow_rates[l] #m^3/hr
     avg_velocity_o = volumetric_flow_rate_o/(reactor_initial_liquid_level*reactor_width)
     mass_o(T) = density_water(T)*reactor_initial_liquid_level*(reactor_length/num_odes_y)*reactor_width
     
-    avg_velocity(T,x,M) = (2*(0.5*mass_o(T)*avg_velocity_o^2 + (mass_o(T)*acceleration_gravity*(height_diff) - M*acceleration_gravity*height_diff*x*(1/num_odes_y)))/M)^(1/2)
-    
-    
     volumetric_flow_rate(T,W,R_H,P,x) = volumetric_flow_rate_o -evaporation_mass_flux(T,W,R_H,P)*(reactor_width/density_water(T))*x*(reactor_length/num_odes_y)
 
-    height(T,W,R_H,P,x,V) = volumetric_flow_rate(T,W,R_H,P,x)/(V*reactor_width)
     term(V,H) = V/((2/3)*H^2)
     velocity_profile_lam(V,y,H) = term(V,H)*((H-y*(H/num_odes_z))*H + 0.5*(H-y*(H/num_odes_z))^2)
     hydraulic_diameter(H) = 4 * (reactor_width * H) / (reactor_width + 2 * H) #m
     reynolds_number(H,T,V) = V .* density_water(T) .* hydraulic_diameter(H) ./ (dynamic_viscosity_water(T))
-    max_vol_flow(T,H) = (500*(dynamic_viscosity_water(T))/(density_water(T) .* hydraulic_diameter(H)))*reactor_width*H
     
-    @show max_vol_flow(298,reactor_initial_liquid_level)
     
     input_hydraulic_diameter = 4 * (reactor_width * reactor_initial_liquid_level) / (reactor_width + 2 * reactor_initial_liquid_level) # meters
     input_temperature = 293.15                          # Kelvin
     ground_temperature = 290.0                          # Kelvin
 
     ## Biomass Properties
-    input_biomass_concentration = 1000.0 / 1000.0         # kg/m^3
+    input_biomass_concentration = 500.0 / 1000.0         # kg/m^3
     max_biomass_concentration = 10000.0 / 1000.0        # kg/m^3 where light is 100% absorbed
     max_biomass_light_saturation = 900.0 / 4.57         # 900 μmol m−2 s−1 converted to W/m^2
     max_biomass_specific_growth_rate = 7.9/24   # 1 / hour (obtained from Krishnan at T_opt, 0 salinity)
@@ -164,9 +152,11 @@ function LoadDefaultParameters(filesuffix, l, q, t)
     
     
     co2_per_biomass = 1.88   #kg CO2/kg algae
+
+    co2_v = [0.80,0.70,0.60,0.50,0.40,0.30,0.20,0.10]
+
+    sparge_fpm = 12.5 #fpm, based on standard sparger design range https://mottcorp.com/wp-content/uploads/2020/05/Sparger-Design-Guide.pdf
     
-    co2_v = [400,350,300,250,200,100,75,40] #kg gas /hr
-    pH_init = 8 
     P_atm = 1 #atm
     PO3 = (0.1E-03)/1000 #mol/kg soln, https://resourcewatch.org/data/explore/f1aa9ec7-c3b6-441c-b395-96fc796b7612?section=Discover&selectedCollection=&zoom=2.422253880286214&lat=51.07099144291875&lng=-85.84319789585153&pitch=0&bearing=0&basemap=dark&labels=light&layers=%255B%257B%2522dataset%2522%253A%2522f1aa9ec7-c3b6-441c-b395-96fc796b7612%2522%252C%2522opacity%2522%253A1%252C%2522layer%2522%253A%25221122cdbf-cb73-467a-bb25-ad86ac491136%2522%257D%255D&aoi=&page=1&sort=most-viewed&sortDirection=-1
     Si = 0.78E-06 #mol/kg soln, https://plymsea.ac.uk/id/eprint/1451/1/The_determination_of_silicate_in_sea_water.pdf
@@ -182,7 +172,7 @@ function LoadDefaultParameters(filesuffix, l, q, t)
      
     end
  
-    vector1 = range(1E-09,51000,1000) #uses DIC
+    vector1 = range(1E-09,67000,1000) #uses DIC
 
     pH_interp = LinearInterpolator(vector1, pH_inter_data) #function that uses DIC as input, pH as output
 
@@ -194,48 +184,57 @@ function LoadDefaultParameters(filesuffix, l, q, t)
 
     CO2_interp = LinearInterpolator(vector1, CO2_inter_data) #function that uses DIC as input, CO2 in mol/L as output
     
-    ##https://www.iaea.org/sites/default/files/18/07/oa-chemistry-dickson-050916.pdf
-
-
-
     ## Mass Transfer Properties
     biomass_diffusion_coefficient_y = 1.0e-9 * 3600.0           #m^2/hour
-    biomass_diffusion_coefficient_z = 1.0e-9 * 3600.0 * 100.0   #m^2/hour [100-fold higher in z-direction, due to added convection]
-
+    biomass_diffusion_coefficient_z = 1.0e-9 * 3600.0           #m^2/hour
+    
     ## Evaporation and Height Properties
     
     evaporation_heat_flux(T,W,R_H,P) = evaporation_mass_flux(T,W,R_H,P)*heat_vaporization_water(T) #J/hr-m2
     ## above equations obtained from https://www.engineeringtoolbox.com/evaporation-water-surface-d_690.html 
     density_solution(T, S) = density_water(T) + S #kg/m3
-    dVavgdx(T,S,R_H,W,P) = -((density_water(T)-density_water_vapor(T))*density_water(T)*specific_heat_capacity_water(T)*evaporation_mass_flux(T,W,R_H,P))/(density_solution(T,S)*density_water_vapor(T)*density_solution(T,S)*specific_heat_capacity_solution(T, S)) #hr-1
-    @show dVavgdx(298, 26, 44,3, saturated_vapor_pressure_water_air(298))*reactor_length
-    #change in Vavg with dx, derived from Wrobel, 2006
- 
+    #the system reaches the settling velocity right away (before hr 1)
+
+    dVavgdx(T,S,R_H,W,P) = ((density_water(T)-density_water_vapor(T))*density_water(T)*specific_heat_capacity_water(T)*evaporation_mass_flux(T,W,R_H,P))/(density_solution(T,S)*density_water_vapor(T)*density_solution(T,S)*specific_heat_capacity_solution(T, S)) #hr-1
+    avg_velocity(T,S,R_H,W,P,x) = avg_velocity_o + dVavgdx(T,S,R_H,W,P)*x*(reactor_length/num_odes_y)
+
+    height(T,S,R_H,W,P,x) = volumetric_flow_rate(T,W,R_H,P,x)/(avg_velocity(T,S,R_H,W,P,x)*reactor_width)
+
     ## Salinity Properties
     salinity_in = (1023.6 - density_water(298))
 
     ##co2 properties
-    mol_frac_co2 = 0.15 #mol frac of CO2 in gas phase
+    mol_frac_co2 = 0.0004 #mol frac of CO2 in gas phase
     mol_frac_air = 1-mol_frac_co2
     kg_mol_gas = mol_frac_co2*(1/molecular_weight_co2) + mol_frac_air*(1/molecular_weight_air) #kg gas/mol
-    rho_gas = 1.298 #kg gas/m3
-    vol_flr_gas = co2_v[t] #kg gas /hr
-    G = (vol_flr_gas/kg_mol_gas) #molar flow of gas, mol/hr
+    floor_oc_coeff = co2_v[t] #fraction of floor area occupied by spargers
+    tot_area = reactor_width*(reactor_length)*floor_oc_coeff
+    mass_flr_gas = (sparge_fpm*(60/3.28)*tot_area)*density_air(292.5) #kg gas/hr
+    G = (mass_flr_gas/kg_mol_gas) #molar flow of gas, mol/hr
     henry_const(T) = 0.035*exp(2400*((1/T) - (1/298.5)))*density_water(T)*(1/0.987)*(1/1000) #henry' constant (mol/L/atm)
     kla_CO2 = 0.0020*3600 #hr-1
-    A = reactor_width*(reactor_length/num_odes_y)
-    y_out(T,C,H) = (1/henry_const(T))*(C*co2_to_M+(mol_frac_co2*henry_const(T) - C*co2_to_M)*exp(-kla_CO2*(A/G)*H*henry_const(T)*1000)) #C in mol/L
-    dMt(T,C,H) = G*(mol_frac_co2 - y_out(T,C,H)) #mol/hr
+    A = tot_area/num_odes_y #m2
+    y_out(T,C,H,mf) = (1/henry_const(T))*(C*co2_to_M+(mf*henry_const(T) - C*co2_to_M)*exp(-kla_CO2*(A/G)*H*henry_const(T)*1000))
+    #(1/henry_const(T))*(C*co2_to_M+(mol_frac_co2*henry_const(T) - C*co2_to_M)*exp(-kla_CO2*(A/G)*H*henry_const(T)*1000)) 
+    dMt(T,C,H) = G*(mf - y_out(T,C,H,mf))
+    #G*(mol_frac_co2 - y_out(T,C,H)) #mol/hr
     #https://www.sciencedirect.com/science/article/pii/S0960852412012047?casa_token=Dg_MAh0F[%E2%80%A6]RwNik8I_cva5L1jX7aB20_ytLrzqUqHu6U7HcAf2xvkFgdibxBymq8QiTI
 
-    co2_init = 0.4756 #g/m3
-    DIC_init = 2002 #umol/L
+    co2_init = 25 #g/m3
+    DIC_init = 2002 #uM
+    pH_init = pH_interp(DIC_init)
+    ratio_init = (co2_init*(1/molecular_weight_co2))/DIC_init
 
     salinity_o = (1023.6 - density_water(298))/density_water(298) #kg salt/kg water, obtained from "density of seawater @ 25 oC
-    salinity(T,W,R_H,P,x,V) = density_water(T)*salinity_o*(((density_water(T)*(volumetric_flow_rate_o))/(density_water(T)*(volumetric_flow_rate_o)-evaporation_mass_flux(T,W,R_H,P)*reactor_width*x*(reactor_length/num_odes_y)))) #kg/m3
-    min_vol_flow(T,W,R_H,P,x) = ((evaporation_mass_flux(T,W,R_H,P)*reactor_width*x*(120/num_odes_y)))/density_water(T)
+    #salinity(T,W,R_H,P,x,V) = density_water(T)*salinity_o*(((density_water(T)*(volumetric_flow_rate_o))/(density_water(T)*(volumetric_flow_rate_o)-evaporation_mass_flux(T,W,R_H,P)*reactor_width*x*(reactor_length/num_odes_y)))) #kg/m3
+    
+    salinity(T,R_H,W,P,x) = ((1023.6 - density_water(T))*reactor_initial_liquid_level)/(height(T,salinity_in,R_H,W,P,x)) #kg salt in a section
+    bm_new(C,H) = ((C)*reactor_initial_liquid_level)/(H)
 
-
+    karmen_c = 0.41
+    shear_velocity(T,S,R_H,W,P,x) = max(avg_velocity(T,S,R_H,W,P,x)/(2.5*log((12.14*height(T,S,R_H,W,P,x))/karmen_c)),0)
+    velocity_profile_turb(T,S,R_H,W,P,x,y,H) = max(shear_velocity(T,S,R_H,W,P,x)*2.5*log((33*(H - y*(H/num_odes_z)))/karmen_c),0)
+    
     
 
 
@@ -310,8 +309,8 @@ function LoadDefaultParameters(filesuffix, l, q, t)
                 biomass_specific_growth_rate,
                 co2_per_biomass,
                 co2_v,
-                pH_init,
                 DIC_init,
+                ratio_init,
                 P_atm,
                 PO3,
                 Si,
@@ -322,7 +321,6 @@ function LoadDefaultParameters(filesuffix, l, q, t)
                 biomass_diffusion_coefficient_z,
                 evaporation_heat_flux,
                 density_solution,
-                dVavgdx,
                 G,
                 y_out,
                 dMt,
@@ -330,6 +328,10 @@ function LoadDefaultParameters(filesuffix, l, q, t)
                 mol_frac_co2,
                 co2_init,
                 salinity,
+                bm_new,
+                dVavgdx,
+                velocity_profile_turb,
+                pH_init
                 )
 
     # Write parameters to file

@@ -1,5 +1,5 @@
 
-using ModelingToolkit
+
 function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
     #Units for params can be found in LoadParameters.jl
     
@@ -44,7 +44,7 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
     K(T,S) = params.dVavgdx(T,S,RH,WNDSPD,P_a)
     M_Evap(T) = params.evaporation_mass_flux(T,WNDSPD,RH,P_a)
     rho_solution(S) = params.density_solution(Tamb,S)
-    S(T,x,V) = params.salinity(T,WNDSPD,RH,P_a,x,V)
+    S(T,x) = params.salinity(T,RH,WNDSPD,P_a,x)
 
     co2_availability_factor(Co2) = params.co2_availability_factor(Co2)
     temperature_factor(T) = params.temperature_factor(T)
@@ -54,8 +54,8 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
     mu(T,S,Co2) = params.biomass_specific_growth_rate(T, S, Co2)
     
 
-    Hght(T,x,V) = params.height(T,WNDSPD,RH,P_a,x,V)
-    dz(T,x,V) = Hght(T,x,V)/Nz
+    Hght(T,x,S) = params.height(T,S,RH,WNDSPD,P_a,x)
+    dz(T,x,S) = Hght(T,x,S)/Nz
 
    # Velocity Profile
     Re(H,T,V) = params.reynolds_number(H,T,V)
@@ -64,24 +64,25 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
     Sal = zeros(Nelements, 1)
     Ht = zeros(Nelements,1)
     Vavg = zeros(Nelements1)
-    
-    for i = 0:Ny
-        Vavg[pos2idx(i,0)] = params.avg_velocity(Temperature[pos2idx(i,0)],i,params.mass_o(Temperature[pos2idx(i,0)]))
-    end
-
 
     for i in 0:Ny
         for j in 0:Nz
    
                 #salinity
-                Sal[pos2idx(i,j)] = S(Temperature[pos2idx(i,j)],i,Vavg[pos2idx(i,0)]) #kg/m3
+                Sal[pos2idx(i,j)] = S(Temperature[pos2idx(i,j)],i) #kg/m3
                 #height 
-                Ht[pos2idx(i,j)] = Hght(Temperature[pos2idx(i,j)],i,Vavg[pos2idx(i,0)]) #m
+
+                Vavg[pos2idx(i,0)] = params.avg_velocity(Temperature[pos2idx(i,0)], Sal[pos2idx(i,0)], RH, WNDSPD, P_a,i)
+
+                Ht[pos2idx(i,j)] = Hght(Temperature[pos2idx(i,j)],i,Sal[pos2idx(i,j)]) #m
                 #increments in z direction
-                dz_v[pos2idx(i,j)] = dz(Temperature[pos2idx(i,j)],i,Vavg[pos2idx(i,0)]) #m
-            
-              
-                V_profile[pos2idx(i,j)] = params.velocity_profile_lam(Vavg[pos2idx(i,0)],j,Ht[pos2idx(i,j)])
+                dz_v[pos2idx(i,j)] = dz(Temperature[pos2idx(i,j)],i,Sal[pos2idx(i,j)]) #m
+
+                if Re(Ht[pos2idx(0,0)],Temperature[pos2idx(0,0)],Vavg[pos2idx(0,0)]) > 2000
+                    V_profile[pos2idx(i,j)] = Vavg[pos2idx(i,0)]
+                else
+                    V_profile[pos2idx(i,j)] = params.velocity_profile_lam(Vavg[pos2idx(i,0)],j,Ht[pos2idx(i,j)])
+                end
          
         end
     end
@@ -113,7 +114,7 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
         for j = 0:Ny
             I_avg_vec[i,pos2idx(j,0)] = GHI*watt_to_umolm2s*percent_light[i]
             for k = 1:Nz
-                I_avg_vec[i,pos2idx(j,k)] = GHI*watt_to_umolm2s*percent_light[i]*exp(-absorbance[i]*C_new[pos2idx(j,k)]*k*dz_v[pos2idx(j,k)])
+                I_avg_vec[i,pos2idx(j,k)] = I_avg_vec[i,pos2idx(j,k-1)]*exp(-absorbance[i]*C[pos2idx(j,k)]*dz_v[pos2idx(j,0)]) #the density of the solution (not mass, has an effect on light)
             end
         end
     end
@@ -142,13 +143,15 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
     
     mw_co2 = params.molecular_weight_co2
     co2_to_M = (1/(mw_co2*1000)) #g/m3 to mol/m3
-    pH = zeros(Nelements,1)
 
     #Vector of specific growth rate values
     mu_v = zeros(Nelements, 1)
+    pH = zeros(Nelements,1)
     for i in 0:Ny
         for j in 0:Nz
-            pH[pos2idx(i,j)] = params.pH_interp(DIC[pos2idx(i,j)] + CO2[pos2idx(i,j)]*co2_to_M*1000)
+
+            pH[pos2idx(i,j)] = params.pH_interp(min(DIC[pos2idx(i,j)],65000))
+
             mu_v[pos2idx(i,j)] = phiL[pos2idx(i,j)]*mu(Temperature[pos2idx(i,j)],Sal[pos2idx(i,j)],CO2[pos2idx(i,j)]) -0.003621
     
             
@@ -181,14 +184,16 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
     # C[pos2idx(Ny+1,z)] = C[pos2idx(Ny,z)]
     #BC3: at y = Ny, convection only [accumulation of biomass at end]
     #y = Ny,  z = 0 .. Nz
-   
+    vT(T,S) = params.vT(T,S)
+
+    
     for j=0:Nz
 
         dC[pos2idx(Ny,j)] = ( (+ Dz * (C[pos2idx(Ny,max(0,j-1))] + C[pos2idx(Ny,min(Nz,j+1))] - 2*C[pos2idx(Ny,j)]) / dz_v[pos2idx(Ny,j)]^2)
                             - V_profile[pos2idx(Ny,j)] * (C[pos2idx(Ny,j)] - C[pos2idx(Ny-1,j)]) / dy
                             )
+        
     end
-    
 
     #y = dy .. Ny-dy,  z = 0 or z = Nz
     for i=1:Ny-1
