@@ -5,6 +5,7 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, params, t)
     Tamb_Data = params.ambient_temperature_data
     WNDSPD_Data = params.wind_speed_data
     RH_Data = params.relative_humidity_data
+    TIME_Data = params.times_data
 
     t_hour1 = floor(Int64, t)
     t_hour2 = floor(Int64, t)+1
@@ -12,9 +13,12 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, params, t)
     data_begin = params.data_begin
 
     GHI = GHI_Data[data_begin + t_hour1] * (t-t_hour1) + GHI_Data[data_begin + t_hour2] * (t_hour2 - t)
+    TIME = TIME_Data[data_begin + t_hour1] * (t-t_hour1) + TIME_Data[data_begin + t_hour2] * (t_hour2 - t)
     Tamb = max.(((Tamb_Data[data_begin + t_hour1] * (t-t_hour1) + Tamb_Data[data_begin + t_hour2] * (t_hour2 - t))),0)
     RH = RH_Data[data_begin + t_hour1] * (t-t_hour1) + RH_Data[data_begin + t_hour2] * (t_hour2 - t)
     WNDSPD = max.((WNDSPD_Data[data_begin + t_hour1] * (t-t_hour1) + WNDSPD_Data[data_begin + t_hour2] * (t_hour2 - t)),0)
+    
+    
 
     mu_model(T,S,C_co2) = params.biomass_specific_growth_rate(T, S, C_co2)
     co2_per_biomass = params.co2_per_biomass
@@ -65,17 +69,22 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, params, t)
     R_co2 = zeros(Nelements,1)
     mu_v = zeros(Nelements, 1)
 
+    t_start = params.start_time
+    t_end = params.stop_time
+
     for i in 0:Ny
  
                 #salinity
             Sal[pos2idx(i,0)] = S(Temperature[pos2idx(i,0)],i) #kg/m3
                 #height 
             Vavg[pos2idx(i,0)] = params.avg_velocity(Temperature[pos2idx(i,0)], Sal[pos2idx(i,0)], RH, WNDSPD, P_a,i)
+          
 
             Ht[pos2idx(i,0)] = Hght(Temperature[pos2idx(i,0)],i,Sal[pos2idx(i,0)]) #m
                 #increments in z direction
             dz_v[pos2idx(i,0)] = dz(Temperature[pos2idx(i,0)],i,Sal[pos2idx(i,0)]) #m
     end
+
 
     co2_availability_factor(C_co2) = params.co2_availability_factor(C_co2)
    
@@ -173,13 +182,15 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, params, t)
 
     for i = 1:Ny
         mol_frac_co2[pos2idx(i,Nz)] = params.y_out(Temperature[pos2idx(i,Nz)],C[pos2idx(i,Nz)],dz_v[pos2idx(i,0)],mf_co2)
-        dC_sparge[pos2idx(i,Nz)] = (G*(mf_co2 - mol_frac_co2[pos2idx(i,Nz)])*molecular_weight_co2)/(W*dy*dz_v[pos2idx(i,0)])
+        dC_sparge[pos2idx(i,Nz)] = 0
+        #(G*(mf_co2 - mol_frac_co2[pos2idx(i,Nz)])*molecular_weight_co2)/(W*dy*dz_v[pos2idx(i,0)])
     end
 
     for i = 1:Ny
         for j = 1:Nz-1
             mol_frac_co2[pos2idx(i,Nz - j)] = params.y_out(Temperature[pos2idx(i,Nz - j)],C[pos2idx(i,Nz - j)],dz_v[pos2idx(i,0)],mol_frac_co2[pos2idx(i, (Nz - j) +1)])
-            dC_sparge[pos2idx(i,Nz - j)] = (G*(mol_frac_co2[pos2idx(i, (Nz - j) +1)] - mol_frac_co2[pos2idx(i,Nz-j)])*molecular_weight_co2)/(W*dy*dz_v[pos2idx(i,0)])
+            dC_sparge[pos2idx(i,Nz - j)] = 0
+            #(G*(mol_frac_co2[pos2idx(i, (Nz - j) +1)] - mol_frac_co2[pos2idx(i,Nz-j)])*molecular_weight_co2)/(W*dy*dz_v[pos2idx(i,0)])
         end
     end
 
@@ -207,15 +218,19 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, params, t)
     end
     
     
+    
     for i = 1:Ny
         for j = 1:Nz
            dCO2[pos2idx(i,j)] = C_new[pos2idx(i,j)] - C[pos2idx(i,j)] #this sets the new CO2 value to C_new
         end
     end
+
+
    
     @views dX[1+2*Nelements:3*Nelements] .= dCO2        # order matters! The @views operator takes a slice out of an array without making a copy.
     @views dX[1+3*Nelements:4*Nelements] .= dDIC
     nothing
+    
 end
 
 

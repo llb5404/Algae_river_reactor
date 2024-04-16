@@ -16,12 +16,13 @@ function Plot_Biomass_Profile(Mout, CO2_out, DIC_out,Tout, T, params, filesuffix
     TL = length(T)
     NelementsT2 = (Nelements)*(TL+1)
   
-    @show TL
+    
     GHI_Data = params.global_horizontal_irradiance_data
     Tamb_Data = params.ambient_temperature_data
     WNDSPD_Data = params.wind_speed_data
     RH_Data = params.relative_humidity_data
     data_begin = params.data_begin
+    TIME_Data = params.times_data
 
     L = params.reactor_length                   # m
     W = params.reactor_width                    # m
@@ -55,6 +56,12 @@ function Plot_Biomass_Profile(Mout, CO2_out, DIC_out,Tout, T, params, filesuffix
         t_hour2 = floor(Int64, T[i])+1
         Tambout[i] = (Tamb_Data[data_begin + t_hour1]*(T[i]-t_hour1)+Tamb_Data[data_begin + t_hour2]*(t_hour2-T[i]))
     end
+    Timeout = zeros(TL, 1)
+    for i in 1:TL
+        t_hour1 = floor(Int64, T[i])
+        t_hour2 = floor(Int64, T[i])+1
+        Timeout[i] = (TIME_Data[data_begin + t_hour1]*(T[i]-t_hour1)+TIME_Data[data_begin + t_hour2]*(t_hour2-T[i]))
+    end
     T_days = T ./ 24.0
     
     P_a(Tamb) = params.saturated_vapor_pressure_water_air(Tamb) #Pa
@@ -64,7 +71,7 @@ function Plot_Biomass_Profile(Mout, CO2_out, DIC_out,Tout, T, params, filesuffix
     end
 
     
-
+    @show Timeout
 
     Hght(T,S,RH,WNDSPD,P,x) = params.height(T,S,RH,WNDSPD,P,x) #m height(T,S,R_H,W,P,x)
    
@@ -93,18 +100,25 @@ function Plot_Biomass_Profile(Mout, CO2_out, DIC_out,Tout, T, params, filesuffix
     Prod_vec = zeros(TL,Nz+1) #g/m2/day
     V_prof_out = zeros(TL,Nelements) #m/hr
     Hght_out = zeros(TL,Ny+1) #m
+    Q_out = zeros(TL,Nelements)
 
     #Bd = boundary layer height, m
+
+    t_start = params.start_time
+    t_end = params.stop_time
     
 
     for i in 1:TL
         for j in 0:Ny
             for k in 0:Nz
-
+                
+                if Timeout[i] >= t_start && Timeout[i] <= t_end
+                    Vavg[i,pos2idx(j,0)] = params.avg_velocity(Tout[i,pos2idx(j,0)], Sout[i,pos2idx(j,0)],RHout[i],WNDSPDout[i],Pa_out[i],j)
+                else
+                    Vavg[i,pos2idx(j,0)] = 0
+                end
 
                     Sout[i,pos2idx(j,0)] = Sal(Tout[i,pos2idx(j,0)],RHout[i],WNDSPDout[i],Pa_out[i],j)
-
-                    Vavg[i,pos2idx(j,0)] = params.avg_velocity(Tout[i,pos2idx(j,0)], Sout[i,pos2idx(j,0)],RHout[i],WNDSPDout[i],Pa_out[i],j)
                       
                     Ht[i,pos2idx(j,0)] = Hght(Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],RHout[i],WNDSPDout[i],Pa_out[i],j)
                     dz_v[i,pos2idx(j,0)] = dz(Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],RHout[i],WNDSPDout[i],Pa_out[i],j)
@@ -114,9 +128,12 @@ function Plot_Biomass_Profile(Mout, CO2_out, DIC_out,Tout, T, params, filesuffix
                     else
                         V_prof_out[i,pos2idx(j,k)] = params.velocity_profile_lam(Vavg[i,pos2idx(j,0)],k,Ht[i,pos2idx(j,0)])
                     end
-                    Re_out[i,pos2idx(j,0)] = Re(Ht[i,pos2idx(j,0)],Tambout[i],Vavg[i,pos2idx1(j)])
+
                     
-                    Prod_vec[i,pos2idx1(k)] = ((Mout[i,pos2idx(Ny-1,k)]* Q(Tout[i,pos2idx(Ny-1,0)],WNDSPDout[i],RHout[i],Pa_out[i],Ny-1)- Cinit* Q(Tout[i,pos2idx(0,0)],WNDSPDout[i],RHout[i],Pa_out[i],0))* 24.0* 1000)/(W*L)
+                    Re_out[i,pos2idx(j,0)] = Re(Ht[i,pos2idx(j,0)],Tambout[i],Vavg[i,pos2idx1(j)])
+                    Q_out[i,pos2idx(j,k)] = Vavg[i,pos2idx(j,0)]*Ht[i,pos2idx(j,0)]
+                    
+                    Prod_vec[i,pos2idx1(k)] = ((Mout[i,pos2idx(Ny-1,k)]* Q_out[i,pos2idx(Ny-1,0)]- Cinit* Q_out[i,pos2idx(0,0)])* 24.0* 1000)/(W*L)
                     #((Mout[i,pos2idx(Ny-1,k)]- Cinit)*V_prof_out[i,pos2idx(Ny-1,k)]*(H/Nz)*W) #still uses initial height at beginning because mass is conserved
                     #((Mout[i,pos2idx(Ny-1,k)]* Q(Tout[i,pos2idx(Ny-1,0)],WNDSPDout[i],RHout[i],Pa_out[i],Ny-1)- Cinit* Q(Tout[i,pos2idx(0,0)],WNDSPDout[i],RHout[i],Pa_out[i],0))* 24.0* 1000)/(W*L)
      
@@ -132,14 +149,7 @@ function Plot_Biomass_Profile(Mout, CO2_out, DIC_out,Tout, T, params, filesuffix
 
     #Prod_out = (Prod_vec_2.* 24.0.* 1000)./(W*L)
     
-    Q_out = zeros(TL,Nelements)
-    for i in 1:TL
-        for j in 0:Ny
-            for k in 0:Nz
-                Q_out[i,pos2idx(j,k)] = Q(Tout[i,pos2idx(j,0)],WNDSPDout[i],RHout[i],Pa_out[i],j)
-            end
-        end
-    end
+   
 
 
     Hght_out = zeros(TL,Ny+1) #m
@@ -226,7 +236,16 @@ function Plot_Biomass_Profile(Mout, CO2_out, DIC_out,Tout, T, params, filesuffix
 
     S(C) = Statistics.mean(C[:, pos2idx(Ny-1,0:Nz)], dims = 2)
     Avg(C) = Statistics.mean(C[:, 1], dims = 2)
+
+    mu_out = zeros(TL,Nelements)
     
+    for i = 1:TL
+        for j = 0:Ny
+            for k = 0:Nz
+                mu_out[i,pos2idx(j,k)] = (params.biomass_specific_growth_rate(Tout[i,pos2idx(j,k)], Sout[i,pos2idx(j,0)], CO2_out[i,pos2idx(j,k)])-0.003621)*24
+            end
+        end
+    end
 
     p1 = plot(Y,Mout[TL, pos2idx(0:Ny,0)] * 1000.0, xlabel = "Length [m]", ylabel = "Algae Cell Density (g/m^3)", title="Algae Surface Cell Density", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p2 = plot(Y,Mout[TL, pos2idx(0:Ny,Nz)] * 1000.0, xlabel = "Length [m]", ylabel = "Algae Cell Density (g/m^3)", title="Algae Floor Cell Density", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
@@ -236,7 +255,8 @@ function Plot_Biomass_Profile(Mout, CO2_out, DIC_out,Tout, T, params, filesuffix
     p6 = plot(T, R(CO2_out), xlabel = "Time [hours]", ylabel = "CO2 (g/m3)", title = "Avg CO2 Conc Over Time (Floor)", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p7 = plot(T, GHIout, xlabel = "Time [hours]", ylabel = "Global Horizontal Irradiance (GHI) [W/m^2]", title = "Solar Energy", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p8 =  plot(Y,Avg_Conc_y[1:Ny+1] * 1000.0, xlabel = "Length [m]", ylabel = "Average Algae Cell Density (g/m^3)", title="Algae Cell Density Across Length", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
-    p = plot(p1, p2, p3, p4, p5, p6, p7, p8, layout=(8,1), legend=false, size=(1200,1200))
+    p9 = plot(T,S(mu_out), xlabel = "Time [hours]", ylabel = "Biomass Specific Growth Rate (day-1)", title="Specific Growth Rate at Outlet over Time", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
+    p = plot(p1, p2, p3, p4, p5, p6, p7, p8, p9, layout=(9,1), legend=false, size=(1400,1200))
     png("Biomass_AlgaeRiverReactor_$filesuffix")
     savefig(p, "Biomass_AlgaeRiverReactor_$filesuffix.ps")
     Average_Continuous_Productivity = Statistics.mean(P(Prod_vec)[max(1,TL-100):TL])
@@ -322,6 +342,13 @@ function Plot_Biomass_Profile(Mout, CO2_out, DIC_out,Tout, T, params, filesuffix
             Lout2D[j+1,i+1] = I_avg[TL,pos2idx(i,j)]
         end
     end
+
+    Muout2D = zeros(Nz+1,Ny+1)
+    for i in 0:Ny
+        for j in 0:Nz
+            Muout2D[j+1,i+1] = mu_out[TL, pos2idx(i,j)]
+        end
+    end
  
     Vout2D = zeros(Nz+1,Ny+1)
     for i in 0:Ny
@@ -363,6 +390,17 @@ function Plot_Biomass_Profile(Mout, CO2_out, DIC_out,Tout, T, params, filesuffix
 
     savefig(q2, "LightProfile_AlgaeRiverReactor_$filesuffix.ps")
     png("LightProfile_AlgaeRiverReactor_$filesuffix")
+
+    q3 = heatmap(Y,Z, Muout2D,
+    yflip=true,
+    c=cgrad([:blue, :white,:red, :yellow]),
+    xlabel="Length (0 is entry) [m]", ylabel="Liquid Level (0 is surface) [m]",
+    title="Specific Growth Rate (day-1)",
+    size=(800,400)
+    )
+
+    savefig(q3, "SpecGrowth_AlgaeRiverReactor_$filesuffix.ps")
+    png("SpecGrowth_AlgaeRiverReactor_$filesuffix")
 
     Average_ratio = 0
     ratio = zeros(Nz+1)
@@ -496,6 +534,7 @@ function Plot_CO2_Profile(CO2_out, DIC_out,Tout, T, params, filesuffix)
     Tamb_Data = params.ambient_temperature_data
     WNDSPD_Data = params.wind_speed_data
     RH_Data = params.relative_humidity_data
+    TIME_Data = params.times_data
     data_begin = params.data_begin
 
     GHIout = zeros(TL,1)
@@ -521,6 +560,12 @@ function Plot_CO2_Profile(CO2_out, DIC_out,Tout, T, params, filesuffix)
         t_hour1 = floor(Int64, T[i])
         t_hour2 = floor(Int64, T[i])+1
         Tambout[i] = (Tamb_Data[data_begin + t_hour1]*(T[i]-t_hour1)+Tamb_Data[data_begin + t_hour2]*(t_hour2-T[i]))
+    end
+    Timeout = zeros(TL, 1)
+    for i in 1:TL
+        t_hour1 = floor(Int64, T[i])
+        t_hour2 = floor(Int64, T[i])+1
+        Timeout[i] = (TIME_Data[data_begin + t_hour1]*(T[i]-t_hour1)+TIME_Data[data_begin + t_hour2]*(t_hour2-T[i]))
     end
 
     L = params.reactor_length                   # m
@@ -607,14 +652,19 @@ function Plot_CO2_Profile(CO2_out, DIC_out,Tout, T, params, filesuffix)
         end
     end
 
-
+    t_start = params.start_time
+    t_end = params.stop_time
 
     for i = 1:TL
         for j = 0:Ny
             for k = 0:Nz
                 M[tpos2idx2(i,j,k)] = params.mass_o(Tout[i,pos2idx(j,0)])
                 Sout[tpos2idx2(i,j,k)] = Sal(Tout[i,pos2idx(j,0)],RHout[i],WNDSPDout[i],Pa_out[i],j)
-                Vavg[tpos2idx2(i,j,k)] = params.avg_velocity(Tout[i,pos2idx(j,0)], Sout[tpos2idx2(i,j,k)],RHout[i],WNDSPDout[i],Pa_out[i],j)
+                if Timeout[i] >= t_start && Timeout[i] <= t_end
+                    Vavg[tpos2idx2(i,j,k)] = params.avg_velocity(Tout[i,pos2idx(j,0)], Sout[tpos2idx2(i,j,k)],RHout[i],WNDSPDout[i],Pa_out[i],j)
+                else
+                    Vavg[tpos2idx2(i,j,k)] = 0
+                end
             end
         end
     end
@@ -674,6 +724,7 @@ function Plot_Height_Profile(Tout, T, params, filesuffix)
     Tamb_Data = params.ambient_temperature_data
     WNDSPD_Data = params.wind_speed_data
     RH_Data = params.relative_humidity_data
+    TIME_Data = params.times_data
     data_begin = params.data_begin
 
     GHIout = zeros(TL,1)
@@ -699,6 +750,12 @@ function Plot_Height_Profile(Tout, T, params, filesuffix)
         t_hour1 = floor(Int64, T[i])
         t_hour2 = floor(Int64, T[i])+1
         Tambout[i] = (Tamb_Data[data_begin + t_hour1]*(T[i]-t_hour1)+Tamb_Data[data_begin + t_hour2]*(t_hour2-T[i]))
+    end
+    Timeout = zeros(TL, 1)
+    for i in 1:TL
+        t_hour1 = floor(Int64, T[i])
+        t_hour2 = floor(Int64, T[i])+1
+        Timeout[i] = (TIME_Data[data_begin + t_hour1]*(T[i]-t_hour1)+TIME_Data[data_begin + t_hour2]*(t_hour2-T[i]))
     end
     
     Evap_C = zeros(TL, Ny+1) #evaporation constant, dimless
@@ -766,6 +823,9 @@ function Plot_Height_Profile(Tout, T, params, filesuffix)
     Sout = zeros(TL, Ny+1) #kg/m3
     V_prof_out = zeros(TL,Nelements) #m/hr
     #Bd = boundary layer height, m
+
+    t_start = params.start_time
+    t_end = params.stop_time
     
     for i in 1:TL
         for j in 0:Ny
@@ -773,7 +833,11 @@ function Plot_Height_Profile(Tout, T, params, filesuffix)
                     
                     Sout[i,pos2idx(j,0)] = Sal(Tout[i,pos2idx(j,0)],RHout[i],WNDSPDout[i],Pa_out[i],j)
 
-                    Vavg[i,pos2idx(j,0)] = params.avg_velocity(Tout[i,pos2idx(j,0)], Sout[i,pos2idx(j,0)],RHout[i],WNDSPDout[i],Pa_out[i],j)
+                    if Timeout[i] >= t_start && Timeout[i] <= t_end
+                        Vavg[i,pos2idx(j,0)] = params.avg_velocity(Tout[i,pos2idx(j,0)], Sout[i,pos2idx(j,0)],RHout[i],WNDSPDout[i],Pa_out[i],j)
+                    else
+                        Vavg[i,pos2idx(j,0)] = 0
+                    end
                       
                     Ht[i,pos2idx(j,0)] = Hght(Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],RHout[i],WNDSPDout[i],Pa_out[i],j)
                    
@@ -826,6 +890,7 @@ function Plot_Height_Profile(Tout, T, params, filesuffix)
     (Ny_max, Nz_max) = idx2pos(maxpos)
     S(Hgt) = Statistics.mean(Hgt[:,pos2idx(0:Ny,0)], dims=2) #mean height across reactor, m
 
+
   
     p1 = plot(Y,Hght_out[TL, pos2idx(0:Ny,0)], xlabel = "Length [m]", ylabel = "Height [m]", title="Height vs Length", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     p2 = plot(T,S(Hght_out), xlabel = "Time [hours]", ylabel = "Average Height [m]", title="Average height over time", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
@@ -853,6 +918,7 @@ function Plot_Salinity_Profile(Tout, T, params, filesuffix)
 
     GHI_Data = params.global_horizontal_irradiance_data
     Tamb_Data = params.ambient_temperature_data
+    TIME_Data = params.times_data
     WNDSPD_Data = params.wind_speed_data
     RH_Data = params.relative_humidity_data
     data_begin = params.data_begin
@@ -890,6 +956,13 @@ function Plot_Salinity_Profile(Tout, T, params, filesuffix)
         t_hour2 = floor(Int64, T[i])+1
         Tambout[i] = (Tamb_Data[data_begin + t_hour1]*(T[i]-t_hour1)+Tamb_Data[data_begin + t_hour2]*(t_hour2-T[i]))
     end
+    Timeout = zeros(TL, 1)
+    for i in 1:TL
+        t_hour1 = floor(Int64, T[i])
+        t_hour2 = floor(Int64, T[i])+1
+        Timeout[i] = (TIME_Data[data_begin + t_hour1]*(T[i]-t_hour1)+TIME_Data[data_begin + t_hour2]*(t_hour2-T[i]))
+    end
+
     T_days = T ./ 24.0
     
     P_a(Tamb) = params.saturated_vapor_pressure_water_air(Tamb) #Pa
@@ -921,13 +994,20 @@ function Plot_Salinity_Profile(Tout, T, params, filesuffix)
     Sout = zeros(TL, Ny+1) #kg/m3
     V_prof_out = zeros(TL,Nelements) #m/hr
 
+    t_start = params.start_time
+    t_end = params.stop_time
+
     for i in 1:TL
         for j in 0:Ny
             for k in 0:Nz
                     
                     Sout[i,pos2idx(j,0)] = Sal(Tout[i,pos2idx(j,0)],RHout[i],WNDSPDout[i],Pa_out[i],j)
 
-                    Vavg[i,pos2idx1(j)] = params.avg_velocity(Tout[i,pos2idx(j,0)], Sout[i,pos2idx(j,0)],RHout[i],WNDSPDout[i],Pa_out[i],j)
+                    if Timeout[i] >= t_start && Timeout[i] <= t_end
+                        Vavg[i,pos2idx(j,0)] = params.avg_velocity(Tout[i,pos2idx(j,0)], Sout[i,pos2idx(j,0)],RHout[i],WNDSPDout[i],Pa_out[i],j)
+                    else
+                        Vavg[i,pos2idx(j,0)] = 0
+                    end
                       
                     Ht[i,pos2idx(j,0)] = Hght(Tout[i,pos2idx(j,0)],Sout[i,pos2idx(j,0)],RHout[i],WNDSPDout[i],Pa_out[i],j)
                    

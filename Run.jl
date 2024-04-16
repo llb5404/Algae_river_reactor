@@ -4,7 +4,11 @@ using Revise, Tables,CSV
 using Debugger
 
 
-break_on(:error)
+using Logging
+using Base.StackTraces: stacktrace, StackFrame
+
+# Open the log file
+
 
 _revise_mode__ = :eval
 

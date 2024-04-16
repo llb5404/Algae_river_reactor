@@ -7,6 +7,7 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
     Tamb_Data = params.ambient_temperature_data
     WNDSPD_Data = params.wind_speed_data
     RH_Data = params.relative_humidity_data
+    TIME_Data = params.times_data
 
     t_hour1 = floor(Int64, t)
     t_hour2 = floor(Int64, t)+1
@@ -17,6 +18,7 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
     data_begin = params.data_begin
 
     GHI = GHI_Data[data_begin + t_hour1] * (t-t_hour1) + GHI_Data[data_begin + t_hour2] * (t_hour2 - t)
+    TIME = TIME_Data[data_begin + t_hour1] * (t-t_hour1) + TIME_Data[data_begin + t_hour2] * (t_hour2 - t)
     Tamb = max.(((Tamb_Data[data_begin + t_hour1] * (t-t_hour1) + Tamb_Data[data_begin + t_hour2] * (t_hour2 - t))),0)
     RH = RH_Data[data_begin + t_hour1] * (t-t_hour1) + RH_Data[data_begin + t_hour2] * (t_hour2 - t)
     WNDSPD = max.((WNDSPD_Data[data_begin + t_hour1] * (t-t_hour1) + WNDSPD_Data[data_begin + t_hour2] * (t_hour2 - t)),0)
@@ -65,6 +67,10 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
     Ht = zeros(Nelements,1)
     Vavg = zeros(Nelements1)
 
+    t_start = params.start_time
+    t_end = params.stop_time
+
+
     for i in 0:Ny
         for j in 0:Nz
    
@@ -73,6 +79,7 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
                 #height 
 
                 Vavg[pos2idx(i,0)] = params.avg_velocity(Temperature[pos2idx(i,0)], Sal[pos2idx(i,0)], RH, WNDSPD, P_a,i)
+          
 
                 Ht[pos2idx(i,j)] = Hght(Temperature[pos2idx(i,j)],i,Sal[pos2idx(i,j)]) #m
                 #increments in z direction

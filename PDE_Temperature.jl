@@ -6,11 +6,13 @@ function HeatTransfer!(dX, T, params, t)
     WNDSPD_Data = params.wind_speed_data
     RH_Data = params.relative_humidity_data
     data_begin = params.data_begin
+    TIME_Data = params.times_data
 
     t_hour1 = floor(Int64, t)
     t_hour2 = floor(Int64, t)+1
 
     GHI = GHI_Data[data_begin + t_hour1] * (t-t_hour1) + GHI_Data[data_begin + t_hour2] * (t_hour2 - t)
+    TIME = TIME_Data[data_begin + t_hour1] * (t-t_hour1) + TIME_Data[data_begin + t_hour2] * (t_hour2 - t)
     WNDSPD = max.((WNDSPD_Data[data_begin + t_hour1] * (t-t_hour1) + WNDSPD_Data[data_begin + t_hour2] * (t_hour2 - t)),0)
     RH = RH_Data[data_begin + t_hour1] * (t-t_hour1) + RH_Data[data_begin + t_hour2] * (t_hour2 - t)
     Tamb = max.(((Tamb_Data[data_begin + t_hour1] * (t-t_hour1) + Tamb_Data[data_begin + t_hour2] * (t_hour2 - t))),0)
@@ -72,13 +74,15 @@ function HeatTransfer!(dX, T, params, t)
     Sal = zeros(Nelements, 1)
     Ht = zeros(Nelements,1)
 
+    t_start = params.start_time
+    t_end = params.stop_time
+
     for i in 0:Ny
         for j in 0:Nz
            
                 #salinity
                 Sal[pos2idx(i,j)] = S(T[pos2idx(i,j)],i) #kg/m3
                 #height 
-
                 Vavg[pos2idx(i,0)] = params.avg_velocity(T[pos2idx(i,0)], Sal[pos2idx(i,0)], RH, WNDSPD, P_a,i)
 
                 Ht[pos2idx(i,j)] = Hght(T[pos2idx(i,j)],i,Sal[pos2idx(i,j)]) #m

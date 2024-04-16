@@ -107,6 +107,7 @@ module AlgaeRiverReactor
         
         T = sol.t
         TL = length(sol.t)
+        @show T
 
         Mout = zeros(TL, Nelements)
         for i in 1:TL
@@ -157,4 +158,7 @@ module AlgaeRiverReactor
 
     end
     export Run
+
+   
+  
 end
