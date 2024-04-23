@@ -10,9 +10,9 @@ break_on(:error)
 
 function LoadDefaultParameters(filesuffix, l, q, t)
     ## PDE Discretization
-    num_odes_y = 25
+    num_odes_y = 100
     num_odes_z = 10
-    time_end = 1020       #hours
+    time_end = 512       #hours
     time_interval = 1.0     #hours
     ## Physical Constants
     reference_temperature = 20.0                                        # deg Celsius
@@ -112,10 +112,16 @@ function LoadDefaultParameters(filesuffix, l, q, t)
     flow_rates = [2.5,5,7.5,10,12.5,15,17.5,20] #m3/hr
     length_flow = length(flow_rates)
     volumetric_flow_rate_o = flow_rates[l] #m^3/hr
+    volumetric_flow_rate_strip = 0.025 #m3/hr (average loss throughout reactor)
+    strip_position = trunc(Int,num_odes_y/2) #halfway through reactor
+    @show strip_position
+    strip_concentration = 1500 #g/m3, saturated
     avg_velocity_o = volumetric_flow_rate_o/(reactor_initial_liquid_level*reactor_width)
     mass_o(T) = density_water(T)*reactor_initial_liquid_level*(reactor_length/num_odes_y)*reactor_width
     
-    volumetric_flow_rate(T,W,R_H,P,x) = volumetric_flow_rate_o -evaporation_mass_flux(T,W,R_H,P)*(reactor_width/density_water(T))*x*(reactor_length/num_odes_y)
+    volumetric_flow_rate(T,W,R_H,P,x) = volumetric_flow_rate_o -evaporation_mass_flux(T,W,R_H,P)*(reactor_width/density_water(T))*x*(reactor_length/num_odes_y) + volumetric_flow_rate_strip*(max(x-(strip_position-1),0)/max(abs(x-(strip_position-1)),1)) #zero when below, vol_flr when above
+
+    
 
     term(V,H) = V/((2/3)*H^2)
     velocity_profile_lam(V,y,H) = term(V,H)*((H-y*(H/num_odes_z))*H + 0.5*(H-y*(H/num_odes_z))^2)
@@ -300,6 +306,9 @@ function LoadDefaultParameters(filesuffix, l, q, t)
                 mass_o,
                 avg_velocity,
                 volumetric_flow_rate,
+                volumetric_flow_rate_strip,
+                strip_position,
+                strip_concentration,
                 height,
                 velocity_profile_lam,
                 hydraulic_diameter,

@@ -111,12 +111,14 @@ function Plot_Biomass_Profile(Mout, CO2_out, DIC_out,Tout, T, params, filesuffix
     for i in 1:TL
         for j in 0:Ny
             for k in 0:Nz
+
+                Vavg[i,pos2idx(j,0)] = params.avg_velocity(Tout[i,pos2idx(j,0)], Sout[i,pos2idx(j,0)],RHout[i],WNDSPDout[i],Pa_out[i],j)
                 
-                if Timeout[i] >= t_start && Timeout[i] <= t_end
-                    Vavg[i,pos2idx(j,0)] = params.avg_velocity(Tout[i,pos2idx(j,0)], Sout[i,pos2idx(j,0)],RHout[i],WNDSPDout[i],Pa_out[i],j)
-                else
-                    Vavg[i,pos2idx(j,0)] = 0
-                end
+                #if Timeout[i] >= t_start && Timeout[i] <= t_end
+                    #Vavg[i,pos2idx(j,0)] = params.avg_velocity(Tout[i,pos2idx(j,0)], Sout[i,pos2idx(j,0)],RHout[i],WNDSPDout[i],Pa_out[i],j)
+                #else
+                    #Vavg[i,pos2idx(j,0)] = 0
+                #end
 
                     Sout[i,pos2idx(j,0)] = Sal(Tout[i,pos2idx(j,0)],RHout[i],WNDSPDout[i],Pa_out[i],j)
                       

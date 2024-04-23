@@ -98,12 +98,12 @@ module AlgaeRiverReactor
     
         
 
-        Xo = [C_biomass_o; Temperature_o; CO2_o;DIC_o]
+        Xo = [C_biomass_o; Temperature_o; CO2_o; DIC_o]
         @show tspan
     
         prob = ODEProblem(Main_PDE!, Xo, tspan, params)
         
-        @time sol = DifferentialEquations.solve(prob, CVODE_BDF(linear_solver=:GMRES), saveat=4.0, progress = true)
+        @time sol = DifferentialEquations.solve(prob, CVODE_BDF(linear_solver=:GMRES), saveat=1.0, progress = true)
         
         T = sol.t
         TL = length(sol.t)

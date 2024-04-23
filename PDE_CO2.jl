@@ -186,14 +186,22 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, params, t)
         #(G*(mf_co2 - mol_frac_co2[pos2idx(i,Nz)])*molecular_weight_co2)/(W*dy*dz_v[pos2idx(i,0)])
     end
 
+    strip_pos = params.strip_position
+    strip_Q = params.volumetric_flow_rate_strip #m3/hr
+    strip_C = params.strip_concentration #g/m3
+
+    Strip_add = zeros(Nelements,1)
+
     for i = 1:Ny
         for j = 1:Nz-1
             mol_frac_co2[pos2idx(i,Nz - j)] = params.y_out(Temperature[pos2idx(i,Nz - j)],C[pos2idx(i,Nz - j)],dz_v[pos2idx(i,0)],mol_frac_co2[pos2idx(i, (Nz - j) +1)])
             dC_sparge[pos2idx(i,Nz - j)] = 0
             #(G*(mol_frac_co2[pos2idx(i, (Nz - j) +1)] - mol_frac_co2[pos2idx(i,Nz-j)])*molecular_weight_co2)/(W*dy*dz_v[pos2idx(i,0)])
+            Strip_add[pos2idx(strip_pos,j)] = (strip_Q*strip_C)/(Ht[pos2idx(strip_pos,0)]*dy*W)
         end
     end
 
+   
     #all except for floor of reactor
     
     
@@ -203,7 +211,7 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, params, t)
                                    + D_co2(Temperature[pos2idx(i,j)]) * (C[pos2idx(i,j-1)] + C[pos2idx(i,min(j+1,Nz))] - 2*C[pos2idx(i,j)]) / dz_v[pos2idx(i,0)]^2             #diffusion CO2 in z-direction
                                    - V_profile[pos2idx(i,j)] * (C[pos2idx(i,j)] - C[pos2idx(i-1,j)]) / dy                           #convection of CO2 in y-direction
                                    - (R_co2[pos2idx(i,j)])                                                 #consumption of CO2 by biomass growth
-                                   + dC_sparge[pos2idx(i,j)])                  
+                                   + dC_sparge[pos2idx(i,j)] + Strip_add[pos2idx(i,j)])                  
         end
     end
     

@@ -157,7 +157,7 @@ function HeatTransfer!(dX, T, params, t)
     for i = 1:Ny
        
  
-        # BC 2
+        # BC 1: Top 
         dT[pos2idx(i, 0)] = (  (k_water*(T[pos2idx(i-1, 0)] - 2*T[pos2idx(i, 0)] + T[pos2idx(min(Ny,i+1), 0)]) / dy^2    #conduction in y-dir
                              + Q_sum1(T[pos2idx(i,0)]) * dy * W)                                                        #heat generation at boundary
                              - V_profile[pos2idx(i,0)] * ( T[pos2idx(i,0)] - T[pos2idx(i-1,0)]) / dy                                       #heat convection at boundary
