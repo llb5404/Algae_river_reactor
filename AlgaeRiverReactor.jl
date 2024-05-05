@@ -81,12 +81,23 @@ module AlgaeRiverReactor
         pos2idx(y,z) = (y.+1) .+ z.*(Ny.+1)
         idx2pos(pos) = [Integer(pos - 1 - (Ny+1) * floor( (pos-1) ./ (Ny.+1))), Integer(floor( (pos-1) ./ (Ny.+1)))]
 
+
+
         C_biomass_in = params.input_biomass_concentration
         Temperature_in = params.input_temperature
         CO2_in = params.co2_init #g/m3
         DIC_in = params.DIC_init #umol/L, remember this excludes CO2
-        
-       
+
+        L = params.reactor_length
+        W = params.reactor_width
+        H = params.reactor_initial_liquid_level
+
+        Nz = params.num_odes_z
+        Ny = params.num_odes_y
+
+        dz = H/Nz
+        dy = L/Ny
+     
         #ICs: initial conditions at t = 0
         C_biomass_o = zeros( (Ny+1) * (Nz+1), 1)
         C_biomass_o[pos2idx(0,0:Nz)] .= C_biomass_in
@@ -98,7 +109,7 @@ module AlgaeRiverReactor
     
         
 
-        Xo = [C_biomass_o; Temperature_o; CO2_o; DIC_o]
+        Xo = [C_biomass_o; Temperature_o; CO2_o;DIC_o]
         @show tspan
     
         prob = ODEProblem(Main_PDE!, Xo, tspan, params)
@@ -107,7 +118,6 @@ module AlgaeRiverReactor
         
         T = sol.t
         TL = length(sol.t)
-        @show T
 
         Mout = zeros(TL, Nelements)
         for i in 1:TL
@@ -158,7 +168,4 @@ module AlgaeRiverReactor
 
     end
     export Run
-
-   
-  
 end

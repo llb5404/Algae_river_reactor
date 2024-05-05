@@ -6,13 +6,11 @@ function HeatTransfer!(dX, T, params, t)
     WNDSPD_Data = params.wind_speed_data
     RH_Data = params.relative_humidity_data
     data_begin = params.data_begin
-    TIME_Data = params.times_data
 
     t_hour1 = floor(Int64, t)
     t_hour2 = floor(Int64, t)+1
 
     GHI = GHI_Data[data_begin + t_hour1] * (t-t_hour1) + GHI_Data[data_begin + t_hour2] * (t_hour2 - t)
-    TIME = TIME_Data[data_begin + t_hour1] * (t-t_hour1) + TIME_Data[data_begin + t_hour2] * (t_hour2 - t)
     WNDSPD = max.((WNDSPD_Data[data_begin + t_hour1] * (t-t_hour1) + WNDSPD_Data[data_begin + t_hour2] * (t_hour2 - t)),0)
     RH = RH_Data[data_begin + t_hour1] * (t-t_hour1) + RH_Data[data_begin + t_hour2] * (t_hour2 - t)
     Tamb = max.(((Tamb_Data[data_begin + t_hour1] * (t-t_hour1) + Tamb_Data[data_begin + t_hour2] * (t_hour2 - t))),0)
@@ -74,15 +72,13 @@ function HeatTransfer!(dX, T, params, t)
     Sal = zeros(Nelements, 1)
     Ht = zeros(Nelements,1)
 
-    t_start = params.start_time
-    t_end = params.stop_time
-
     for i in 0:Ny
         for j in 0:Nz
            
                 #salinity
                 Sal[pos2idx(i,j)] = S(T[pos2idx(i,j)],i) #kg/m3
                 #height 
+
                 Vavg[pos2idx(i,0)] = params.avg_velocity(T[pos2idx(i,0)], Sal[pos2idx(i,0)], RH, WNDSPD, P_a,i)
 
                 Ht[pos2idx(i,j)] = Hght(T[pos2idx(i,j)],i,Sal[pos2idx(i,j)]) #m
@@ -151,22 +147,28 @@ function HeatTransfer!(dX, T, params, t)
     ##T(-1,j) = T(0,j)
     ##T(Ny+1,j) = T(Ny,j)
 
-    
-  
+    Q = zeros(Nelements,1)
+
+    for i = 0:Ny
+        for j = 0:Nz
+            Q[pos2idx(i,j)] = V_profile[pos2idx(i,j)]*Ht[pos2idx(i,0)] #m2/hr
+        end
+    end
+
 
     for i = 1:Ny
        
  
-        # BC 1: Top 
+        # BC 2
         dT[pos2idx(i, 0)] = (  (k_water*(T[pos2idx(i-1, 0)] - 2*T[pos2idx(i, 0)] + T[pos2idx(min(Ny,i+1), 0)]) / dy^2    #conduction in y-dir
                              + Q_sum1(T[pos2idx(i,0)]) * dy * W)                                                        #heat generation at boundary
-                             - V_profile[pos2idx(i,0)] * ( T[pos2idx(i,0)] - T[pos2idx(i-1,0)]) / dy                                       #heat convection at boundary
+                             - (Q[pos2idx(i,0)]*T[pos2idx(i,0)] - Q[pos2idx(i-1,0)]*T[pos2idx(i-1,0)]) / (dy*Ht[pos2idx(i,0)])                                       #heat convection at boundary
                              ) / (rho_water * cp_water)
 
         # BC 3
         dT[pos2idx(i, Nz)] = (  (k_water*(T[pos2idx(i-1, Nz)] - 2*T[pos2idx(i, Nz)] + T[pos2idx(min(Ny,i+1), Nz)]) / dy^2 #conduction in y-dir
                               + Q_sum2(T[pos2idx(i,Nz)]) * dy * W)                                                       #heat generation at boundary
-                              - V_profile[pos2idx(i,Nz)]*(T[pos2idx(i,Nz)] - T[pos2idx(i-1,Nz)])/ dy                                        #heat convection at boundary
+                              - (Q[pos2idx(i,Nz)]*T[pos2idx(i,Nz)] - Q[pos2idx(i-1,Nz)]*T[pos2idx(i-1,Nz)]) / (dy*Ht[pos2idx(i,Nz)])                                       #heat convection at boundary
                              ) / (rho_water*cp_water)
     end
 
@@ -180,7 +182,7 @@ function HeatTransfer!(dX, T, params, t)
         for j=1:Nz-1
             dT[pos2idx(i,j)] = (   (k_water * (T[pos2idx(i-1, j)] - 2*T[pos2idx(i, j)] + T[pos2idx(min(Ny,i+1), j)]) / dy^2      #conduction in y-dir
                                  + k_water * (T[pos2idx(i, j-1)] - 2*T[pos2idx(i, j)] + T[pos2idx(i, j+1)]) / dz_v[pos2idx(i,j)]^2)     #conduction in z-dir
-                                 - V_profile[pos2idx(i,j)]*(T[pos2idx(i,j)] - T[pos2idx(i-1,j)]) / dy                         #heat convection
+                                 - (Q[pos2idx(i,j)]*T[pos2idx(i,j)] - Q[pos2idx(i-1,j)]*T[pos2idx(i-1,j)]) / (dy*Ht[pos2idx(i,j)])                         #heat convection
                                ) / (rho_water*cp_water)
         end
     end

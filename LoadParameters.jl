@@ -10,9 +10,9 @@ break_on(:error)
 
 function LoadDefaultParameters(filesuffix, l, q, t)
     ## PDE Discretization
-    num_odes_y = 100
+    num_odes_y = 10
     num_odes_z = 10
-    time_end = 512       #hours
+    time_end = 516       #hours
     time_interval = 1.0     #hours
     ## Physical Constants
     reference_temperature = 20.0                                        # deg Celsius
@@ -51,7 +51,6 @@ function LoadDefaultParameters(filesuffix, l, q, t)
     thermal_conductivity_water(T) = (0.565464 .+ 1.756E-03 .* T .- 6.46E-06 .* T.^2)*3600   # J/m/K/hr
     solar_reflectance_water = 0.1357 # fraction of light reflected
     diffusion_coeff_water_air(T) = 22.5E-06 .* ( (T .+ 273.15) ./ 273.15).^1.8*3600        # m^2 / sec
-    @show diffusion_coeff_water_air(292)
     saturated_vapor_pressure_water_air(T) = (exp(77.3450+0.0057*T-7235/T))/(T^8.2)  #Pascals
     heat_vaporization_water(T) = 2430159                                        # J / kg, T = 30 degC            [40660 * ( (647.3 - (T + 273.15)) / (647.3 - 373.2))^0.38 #J/mole, but isn't very accurate]
     emissivity_water = 0.97                                                     # dimensionless
@@ -59,10 +58,7 @@ function LoadDefaultParameters(filesuffix, l, q, t)
     density_water_vapor(T) = 0.804 #kg/m3
     @show thermal_conductivity_water(298)
     # CO2 Properties
-    diffusion_coeff_co2_water(T) = (13.942E-09*((292/227.0) - 1)^1.7094)*3600              # m^2 / hr [equation fitted based on data in https://pubs.acs.org/doi/10.1021/je401008s]
-
-    
-
+    diffusion_coeff_co2_water(T) = (13.942E-09*((T/227.0) - 1)^1.7094)*3600              # m^2 / hr [equation fitted based on data in https://pubs.acs.org/doi/10.1021/je401008s]
     solubility_co2_water(T) = (0.00025989 .* (T .- 273.15).^2 .- 0.03372247 .* (T .- 273.15) .+ 1.31249383) ./ 1000.0  #mole fraction of dissolved CO2 in water at equilibrium [equation fitted based on data from https://srd.nist.gov/JPCRD/jpcrd427.pdf]
     molecular_weight_co2 = 0.04401 #kg/mole                                             # kg / mole
 
@@ -76,7 +72,7 @@ function LoadDefaultParameters(filesuffix, l, q, t)
     relative_humidity_data = zeros(8760,1)              # percent humidity
     wind_speed_data = zeros(8760,1)                     # m/s
     #days_data = zeros(8760,1)                           # days
-    times_data = zeros(8760,1)                          # hours
+    #times_data = zeros(8760,1)                          # hours
 
     # Reading Measured GHI Values from Pheonix, AZ [stored in "722789TYA.csv"]
     csv_reader = CSV.File("722789TYA.csv", skipto=3, header=["col1", "col2", "col3", "col4", "col5", "col6","col7", "col8", "col9", "col10", "col11", "col12","col13", "col14", "col15", "col16", "col17", "col18","col19", "col20", "col21", "col22", "col23", "col24","col25", "col26", "col27", "col28", "col29", "col30","col31", "col32", "col33", "col34", "col35", "col36","col37", "col38", "col39", "col40", "col41", "col42","col43", "col44", "col45", "col46", "col47"])
@@ -87,9 +83,8 @@ function LoadDefaultParameters(filesuffix, l, q, t)
         ambient_temperature_data[i] = convert(Float64, row.col32) + 273.15    # Kelvin
         relative_humidity_data[i] = convert(Float64, row.col38)               # percent humidity
         wind_speed_data[i]= convert(Float64, row.col47)                       # m/s
-        times_data[i] = convert(Float64, row.col2)
     end
-   
+
     #April 1st: 2161
     #Nov 1st: 7297
     data_begin = 2161
@@ -112,16 +107,20 @@ function LoadDefaultParameters(filesuffix, l, q, t)
     flow_rates = [2.5,5,7.5,10,12.5,15,17.5,20] #m3/hr
     length_flow = length(flow_rates)
     volumetric_flow_rate_o = flow_rates[l] #m^3/hr
-    volumetric_flow_rate_strip = 0.025 #m3/hr (average loss throughout reactor)
-    strip_position = trunc(Int,num_odes_y/2) #halfway through reactor
+
+    strip_flr = [8.5,7.5,6.5,5.5,4.5,3.5,2.5,1.5] #gpm (within range of low flr pumps on McMaster Carr)
+    gpm = strip_flr[t]
+    volumetric_flow_rate_strip = gpm*0.00379*60 #m3/hr
+    @show volumetric_flow_rate_strip
+    strip_position = [trunc(Int,num_odes_y/2)] #halfway through reactor
     @show strip_position
     strip_concentration = 1500 #g/m3, saturated
+    
     avg_velocity_o = volumetric_flow_rate_o/(reactor_initial_liquid_level*reactor_width)
     mass_o(T) = density_water(T)*reactor_initial_liquid_level*(reactor_length/num_odes_y)*reactor_width
     
-    volumetric_flow_rate(T,W,R_H,P,x) = volumetric_flow_rate_o -evaporation_mass_flux(T,W,R_H,P)*(reactor_width/density_water(T))*x*(reactor_length/num_odes_y) + volumetric_flow_rate_strip*(max(x-(strip_position-1),0)/max(abs(x-(strip_position-1)),1)) #zero when below, vol_flr when above
-
-    
+    volumetric_flow_rate(T,W,R_H,P,x) = (volumetric_flow_rate_o -evaporation_mass_flux(T,W,R_H,P)*(reactor_width/density_water(T))*x*(reactor_length/num_odes_y)
+    + volumetric_flow_rate_strip*(max(x-(strip_position[1]-1),0)/max(abs(x-(strip_position[1]-1)),1)) ) 
 
     term(V,H) = V/((2/3)*H^2)
     velocity_profile_lam(V,y,H) = term(V,H)*((H-y*(H/num_odes_z))*H + 0.5*(H-y*(H/num_odes_z))^2)
@@ -203,9 +202,8 @@ function LoadDefaultParameters(filesuffix, l, q, t)
     
     evaporation_heat_flux(T,W,R_H,P) = evaporation_mass_flux(T,W,R_H,P)*heat_vaporization_water(T) #J/hr-m2
     ## above equations obtained from https://www.engineeringtoolbox.com/evaporation-water-surface-d_690.html 
-    density_solution(T, S) = density_water(T) + S #kg/m3
-    #the system reaches the settling velocity right away (before hr 1)
 
+    density_solution(T, S) = density_water(T) + S #kg/m3
     dVavgdx(T,S,R_H,W,P) = ((density_water(T)-density_water_vapor(T))*density_water(T)*specific_heat_capacity_water(T)*evaporation_mass_flux(T,W,R_H,P))/(density_solution(T,S)*density_water_vapor(T)*density_solution(T,S)*specific_heat_capacity_solution(T, S)) #hr-1
     avg_velocity(T,S,R_H,W,P,x) = avg_velocity_o + dVavgdx(T,S,R_H,W,P)*x*(reactor_length/num_odes_y)
 
@@ -226,9 +224,7 @@ function LoadDefaultParameters(filesuffix, l, q, t)
     kla_CO2 = 0.0020*3600 #hr-1
     A = tot_area/num_odes_y #m2
     y_out(T,C,H,mf) = (1/henry_const(T))*(C*co2_to_M+(mf*henry_const(T) - C*co2_to_M)*exp(-kla_CO2*(A/G)*H*henry_const(T)*1000))
-    #(1/henry_const(T))*(C*co2_to_M+(mol_frac_co2*henry_const(T) - C*co2_to_M)*exp(-kla_CO2*(A/G)*H*henry_const(T)*1000)) 
     dMt(T,C,H) = G*(mf - y_out(T,C,H,mf))
-    #G*(mol_frac_co2 - y_out(T,C,H)) #mol/hr
     #https://www.sciencedirect.com/science/article/pii/S0960852412012047?casa_token=Dg_MAh0F[%E2%80%A6]RwNik8I_cva5L1jX7aB20_ytLrzqUqHu6U7HcAf2xvkFgdibxBymq8QiTI
 
     co2_init = 30 #g/m3
@@ -240,14 +236,11 @@ function LoadDefaultParameters(filesuffix, l, q, t)
     #salinity(T,W,R_H,P,x,V) = density_water(T)*salinity_o*(((density_water(T)*(volumetric_flow_rate_o))/(density_water(T)*(volumetric_flow_rate_o)-evaporation_mass_flux(T,W,R_H,P)*reactor_width*x*(reactor_length/num_odes_y)))) #kg/m3
     
     salinity(T,R_H,W,P,x) = ((1023.6 - density_water(T))*reactor_initial_liquid_level)/(height(T,salinity_in,R_H,W,P,x)) #kg salt in a section
-    bm_new(C,H) = ((C)*reactor_initial_liquid_level)/(H)
+
 
     karmen_c = 0.41
     shear_velocity(T,S,R_H,W,P,x) = max(avg_velocity(T,S,R_H,W,P,x)/(2.5*log((12.14*height(T,S,R_H,W,P,x))/karmen_c)),0)
     velocity_profile_turb(T,S,R_H,W,P,x,y,H) = max(shear_velocity(T,S,R_H,W,P,x)*2.5*log((33*(H - y*(H/num_odes_z)))/karmen_c),0)
-
-    start_time = 6.00 #6:00 AM
-    stop_time = 21.00 #9:00 PM
     
     
 
@@ -285,7 +278,6 @@ function LoadDefaultParameters(filesuffix, l, q, t)
                 thermal_diffusivity_concrete,
                 thermal_conductivity_concrete,
                 global_horizontal_irradiance_data,
-                times_data,
                 ambient_temperature_data,
                 relative_humidity_data,
                 wind_speed_data,
@@ -306,9 +298,6 @@ function LoadDefaultParameters(filesuffix, l, q, t)
                 mass_o,
                 avg_velocity,
                 volumetric_flow_rate,
-                volumetric_flow_rate_strip,
-                strip_position,
-                strip_concentration,
                 height,
                 velocity_profile_lam,
                 hydraulic_diameter,
@@ -346,12 +335,14 @@ function LoadDefaultParameters(filesuffix, l, q, t)
                 mol_frac_co2,
                 co2_init,
                 salinity,
-                bm_new,
                 dVavgdx,
                 velocity_profile_turb,
                 pH_init,
-                start_time,
-                stop_time
+                volumetric_flow_rate_o,
+                strip_position,
+                volumetric_flow_rate_strip,
+                strip_concentration,
+                strip_flr
                 )
 
     # Write parameters to file

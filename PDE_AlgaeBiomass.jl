@@ -7,7 +7,6 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
     Tamb_Data = params.ambient_temperature_data
     WNDSPD_Data = params.wind_speed_data
     RH_Data = params.relative_humidity_data
-    TIME_Data = params.times_data
 
     t_hour1 = floor(Int64, t)
     t_hour2 = floor(Int64, t)+1
@@ -18,7 +17,6 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
     data_begin = params.data_begin
 
     GHI = GHI_Data[data_begin + t_hour1] * (t-t_hour1) + GHI_Data[data_begin + t_hour2] * (t_hour2 - t)
-    TIME = TIME_Data[data_begin + t_hour1] * (t-t_hour1) + TIME_Data[data_begin + t_hour2] * (t_hour2 - t)
     Tamb = max.(((Tamb_Data[data_begin + t_hour1] * (t-t_hour1) + Tamb_Data[data_begin + t_hour2] * (t_hour2 - t))),0)
     RH = RH_Data[data_begin + t_hour1] * (t-t_hour1) + RH_Data[data_begin + t_hour2] * (t_hour2 - t)
     WNDSPD = max.((WNDSPD_Data[data_begin + t_hour1] * (t-t_hour1) + WNDSPD_Data[data_begin + t_hour2] * (t_hour2 - t)),0)
@@ -27,6 +25,7 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
     Dz = params.biomass_diffusion_coefficient_z
     L = params.reactor_length 
     H = params.reactor_initial_liquid_level 
+    W = params.reactor_width
     Ny = params.num_odes_y 
     Nz = params.num_odes_z
     dy = L / Ny
@@ -67,10 +66,6 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
     Ht = zeros(Nelements,1)
     Vavg = zeros(Nelements1)
 
-    t_start = params.start_time
-    t_end = params.stop_time
-
-
     for i in 0:Ny
         for j in 0:Nz
    
@@ -79,7 +74,6 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
                 #height 
 
                 Vavg[pos2idx(i,0)] = params.avg_velocity(Temperature[pos2idx(i,0)], Sal[pos2idx(i,0)], RH, WNDSPD, P_a,i)
-          
 
                 Ht[pos2idx(i,j)] = Hght(Temperature[pos2idx(i,j)],i,Sal[pos2idx(i,j)]) #m
                 #increments in z direction
@@ -105,13 +99,7 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
         percent_light[i] = convert(Float64,row.col3)
     end
 
-    Conc_New(M_biomass_z,z) = (sum(M_biomass_z[1:z])/z)
-    C_new = zeros(Nelements,1)
-    for i = 0:Ny
-        for j = 0:Nz
-            C_new[pos2idx(i,j)] = Conc_New(C[pos2idx(i,0:Nz)],j+1)
-        end
-    end
+    
 
     watt_to_umolm2s = 0.425*4.6
 
@@ -121,7 +109,7 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
         for j = 0:Ny
             I_avg_vec[i,pos2idx(j,0)] = GHI*watt_to_umolm2s*percent_light[i]
             for k = 1:Nz
-                I_avg_vec[i,pos2idx(j,k)] = I_avg_vec[i,pos2idx(j,k-1)]*exp(-absorbance[i]*C[pos2idx(j,k)]*dz_v[pos2idx(j,0)]) #the density of the solution (not mass, has an effect on light)
+                I_avg_vec[i,pos2idx(j,k)] = I_avg_vec[i,pos2idx(j,k-1)]*exp(-absorbance[i]*(C[pos2idx(j,k)])*dz_v[pos2idx(j,k)]) #the density of the solution (not mass, has an effect on light)
             end
         end
     end
@@ -192,12 +180,31 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
     #BC3: at y = Ny, convection only [accumulation of biomass at end]
     #y = Ny,  z = 0 .. Nz
     vT(T,S) = params.vT(T,S)
+    Q = zeros(Nelements,1)
 
+    for i = 0:Ny
+        for j = 0:Nz
+            Q[pos2idx(i,j)] = V_profile[pos2idx(i,j)]*Ht[pos2idx(i,0)] #m2/hr
+        end
+    end
+
+    C_conc = zeros(Nelements,1)
+
+
+
+    for i = 0:Ny
+        for j = 0:Nz
+            C_conc[pos2idx(i,j)] = C[pos2idx(i,j)]
+        end
+    end
+
+    #dC/dy: C[pos2idx(i+1,j)] = 
     
     for j=0:Nz
+        
 
-        dC[pos2idx(Ny,j)] = ( (+ Dz * (C[pos2idx(Ny,max(0,j-1))] + C[pos2idx(Ny,min(Nz,j+1))] - 2*C[pos2idx(Ny,j)]) / dz_v[pos2idx(Ny,j)]^2)
-                            - V_profile[pos2idx(Ny,j)] * (C[pos2idx(Ny,j)] - C[pos2idx(Ny-1,j)]) / dy
+        dC[pos2idx(Ny,j)] = ( (+ Dz * (C_conc[pos2idx(Ny,max(0,j-1))] + C_conc[pos2idx(Ny,min(Nz,j+1))] - 2*C_conc[pos2idx(Ny,j)]) / dz_v[pos2idx(Ny,j)]^2)
+                            - (Q[pos2idx(Ny,j)]*C_conc[pos2idx(Ny,j)] - Q[pos2idx(Ny-1,j)]*C_conc[pos2idx(Ny-1,j)]) / (dy*Ht[pos2idx(Ny,j)]) #change in concentration due to height change
                             )
         
     end
@@ -206,26 +213,27 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
     for i=1:Ny-1
         
 
-        dC[pos2idx(i,0)] =     ( (Dy * (C[pos2idx(i-1,0)] + C[pos2idx(i+1,0)] - 2*C[pos2idx(i,0)]) / dy^2  #small
-                               + Dz * (C[pos2idx(i,0)] + C[pos2idx(i,0+1)] - 2*C[pos2idx(i,0)]) /dz_v[pos2idx(i,0)]^2)
-                               - V_profile[pos2idx(i,0)] * ( C[pos2idx(i,0)] - C[pos2idx(i-1,0)] )/dy
-                               + mu_v[pos2idx(i,0)] * C[pos2idx(i,0)]
+        dC[pos2idx(i,0)] =     ( (Dy * (C_conc[pos2idx(i-1,0)] + C_conc[pos2idx(i+1,0)] - 2*C_conc[pos2idx(i,0)]) / dy^2  #small
+                               + Dz * (C_conc[pos2idx(i,0)] + C_conc[pos2idx(i,0+1)] - 2*C_conc[pos2idx(i,0)]) /dz_v[pos2idx(i,0)]^2)
+                               - (Q[pos2idx(i,0)]*C_conc[pos2idx(i,0)] - Q[pos2idx(i-1,0)]*C_conc[pos2idx(i-1,0)]) / (dy*Ht[pos2idx(i,0)])
+                               + mu_v[pos2idx(i,0)] * C_conc[pos2idx(i,0)]
                                )
 
-        dC[pos2idx(i,Nz)] =    ( (Dy * (C[pos2idx(i-1,Nz)] + C[pos2idx(i+1,Nz)] - 2*C[pos2idx(i,Nz)]) / dy^2 #small
-                               + Dz * (C[pos2idx(i,Nz-1)] + C[pos2idx(i,Nz)] - 2*C[pos2idx(i,Nz)]) / dz_v[pos2idx(i,Nz)]^2)
-                               - V_profile[pos2idx(i,Nz)] * (C[pos2idx(i,Nz)] - C[pos2idx(i-1,Nz)]) / dy
-                               + mu_v[pos2idx(i,Nz)] * C[pos2idx(i,Nz)]
+
+        dC[pos2idx(i,Nz)] =    ( (Dy * (C_conc[pos2idx(i-1,Nz)] + C_conc[pos2idx(i+1,Nz)] - 2*C_conc[pos2idx(i,Nz)]) / dy^2 #small
+                               + Dz * (C_conc[pos2idx(i,Nz-1)] + C_conc[pos2idx(i,Nz)] - 2*C_conc[pos2idx(i,Nz)]) / dz_v[pos2idx(i,Nz)]^2)
+                               - (Q[pos2idx(i,Nz)]*C_conc[pos2idx(i,Nz)] - Q[pos2idx(i-1,Nz)]*C_conc[pos2idx(i-1,Nz)]) / (dy*Ht[pos2idx(i,Nz)])
+                               + mu_v[pos2idx(i,Nz)] * C_conc[pos2idx(i,Nz)]
                                )
     end
 
     for i=1:Ny-1
         for j=1:Nz-1
 
-            dC[pos2idx(i,j)] = ( (Dy * (C[pos2idx(i-1,j)] + C[pos2idx(i+1,j)] - 2*C[pos2idx(i,j)]) / dy^2
-                               + Dz * (C[pos2idx(i,j-1)] + C[pos2idx(i,j+1)] - 2*C[pos2idx(i,j)]) / dz_v[pos2idx(i,j)]^2)
-                               - V_profile[pos2idx(i,j)] * (C[pos2idx(i,j)] - C[pos2idx(i-1,j)]) / dy
-                               + mu_v[pos2idx(i,j)] * C[pos2idx(i,j)]
+            dC[pos2idx(i,j)] = ( (Dy * (C_conc[pos2idx(i-1,j)] + C_conc[pos2idx(i+1,j)] - 2*C_conc[pos2idx(i,j)]) / dy^2
+                               + Dz * (C_conc[pos2idx(i,j-1)] + C_conc[pos2idx(i,j+1)] - 2*C_conc[pos2idx(i,j)]) / dz_v[pos2idx(i,j)]^2)
+                               - (Q[pos2idx(i,j)]*C_conc[pos2idx(i,j)] - Q[pos2idx(i-1,j)]*C_conc[pos2idx(i-1,j)]) / (dy*Ht[pos2idx(i,j)])
+                               + mu_v[pos2idx(i,j)] * C_conc[pos2idx(i,j)]
                                )
                   
         end
