@@ -49,23 +49,20 @@ module AlgaeRiverReactor
     end
     
     
-    function Run(l, q, t, type)
+    function Run(l, q, type)
         #Units for params can be found in LoadParameters.jl
         include("LoadParameters.jl")        # LoadDefaultParameters
        
             filesuffix1 = ["v_v1", "v_v2", "v_v3", "v_v4", "v_v5", "v_v6", "v_v7", "v_v8"]
             filesuffix2 = ["l_v1", "l_v2", "l_v3", "l_v4", "l_v5", "l_v6", "l_v7", "l_v8"]
-            filesuffix3 = ["c_v1", "c_v2", "c_v3", "c_v4", "c_v5", "c_v6", "c_v7", "c_v8"]
       
 
        
         ## Load Parameters
         if type == 1
-            params = LoadDefaultParameters(filesuffix1[l], l, q, t)
+            params = LoadDefaultParameters(filesuffix1[l], l, q)
         elseif type == 2
-            params = LoadDefaultParameters(filesuffix2[q], l, q, t)
-        elseif type == 3
-            params = LoadDefaultParameters(filesuffix3[t], l, q, t)
+            params = LoadDefaultParameters(filesuffix2[q], l, q)
         end
 
        
@@ -81,24 +78,36 @@ module AlgaeRiverReactor
         pos2idx(y,z) = (y.+1) .+ z.*(Ny.+1)
         idx2pos(pos) = [Integer(pos - 1 - (Ny+1) * floor( (pos-1) ./ (Ny.+1))), Integer(floor( (pos-1) ./ (Ny.+1)))]
 
+
+
         C_biomass_in = params.input_biomass_concentration
         Temperature_in = params.input_temperature
         CO2_in = params.co2_init #g/m3
         DIC_in = params.DIC_init #umol/L, remember this excludes CO2
-        
-       
+
+        L = params.reactor_length
+        W = params.reactor_width
+        H = params.reactor_initial_liquid_level
+
+        Nz = params.num_odes_z
+        Ny = params.num_odes_y
+
+        dz = H/Nz
+        dy = L/Ny
+     
         #ICs: initial conditions at t = 0
         C_biomass_o = zeros( (Ny+1) * (Nz+1), 1)
         C_biomass_o[pos2idx(0,0:Nz)] .= C_biomass_in
         Temperature_o = ones( (Ny+1) * (Nz+1), 1) .* Temperature_in
-        CO2_o = (ones( (Ny+1) * (Nz+1), 1) .* CO2_in)
+        CO2_o = ones( (Ny+1) * (Nz+1), 1) .* 0.4401
+        CO2_o[pos2idx(0,1:Nz)] .= CO2_in
         DIC_o = (ones( (Ny+1) * (Nz+1), 1) .* DIC_in)
         tspan = (0.0, Time_end)
 
     
         
 
-        Xo = [C_biomass_o; Temperature_o; CO2_o; DIC_o]
+        Xo = [C_biomass_o; Temperature_o; CO2_o;DIC_o]
         @show tspan
     
         prob = ODEProblem(Main_PDE!, Xo, tspan, params)
@@ -107,7 +116,6 @@ module AlgaeRiverReactor
         
         T = sol.t
         TL = length(sol.t)
-        @show T
 
         Mout = zeros(TL, Nelements)
         for i in 1:TL
@@ -135,30 +143,15 @@ module AlgaeRiverReactor
        
         if type == 1
             Plot_Biomass_Profile(Mout, CO2_out,DIC_out, Tout, T, params, filesuffix1[l])
-            Plot_Temperature_Profile(Tout, T, params, filesuffix1[l])
-            Plot_CO2_Profile(CO2_out, DIC_out,Tout,T, params, filesuffix1[l])
             Plot_Height_Profile(Tout, T, params, filesuffix1[l])
-            Plot_Salinity_Profile(Tout, T, params, filesuffix1[l])
-            return Plot_Biomass_Profile(Mout, CO2_out,DIC_out,Tout, T, params, filesuffix1[l])
+            return Plot_Biomass_Profile(Mout, CO2_out,DIC_out,Tout, T, params, filesuffix1[l]), Plot_Height_Profile(Tout, T, params, filesuffix1[l])
+            
         elseif type == 2
             Plot_Biomass_Profile(Mout, CO2_out,DIC_out, Tout, T, params, filesuffix2[q])
-            Plot_Temperature_Profile(Tout, T, params, filesuffix2[q])
-            Plot_CO2_Profile(CO2_out, DIC_out,Tout, T, params, filesuffix2[q])
             Plot_Height_Profile(Tout, T, params, filesuffix2[q])
-            Plot_Salinity_Profile(Tout, T, params, filesuffix2[q])
-            return Plot_Biomass_Profile(Mout, CO2_out,DIC_out,Tout, T, params, filesuffix2[q])
-        elseif type == 3
-            Plot_Biomass_Profile(Mout, CO2_out, DIC_out,Tout, T, params, filesuffix3[t])
-            Plot_Temperature_Profile(Tout, T, params, filesuffix3[t])
-            Plot_CO2_Profile(CO2_out, DIC_out,Tout, T, params, filesuffix3[t])
-            Plot_Height_Profile(Tout, T, params, filesuffix3[t])
-            Plot_Salinity_Profile(Tout, T, params, filesuffix3[t])
-            return Plot_Biomass_Profile(Mout, CO2_out,DIC_out,Tout, T, params, filesuffix3[t])
+            return Plot_Biomass_Profile(Mout, CO2_out,DIC_out,Tout, T, params, filesuffix2[q]), Plot_Height_Profile(Tout, T, params, filesuffix1[l])
         end
 
     end
     export Run
-
-   
-  
 end
