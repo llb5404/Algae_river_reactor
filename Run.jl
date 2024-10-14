@@ -43,6 +43,7 @@ strip_conc_vec = (params.strip_concentration/1000)*ones(8,1)
 
 #initial co2 conc, initial bm density, initial liquid level
 
+params = LoadDefaultParameters(filesuffix1[1], 8, 1) #constant params
 
 tidx = 2
 
@@ -76,7 +77,8 @@ for l = 1:8
 
 end
 
-idx = argmax(productivity_v[:,1])
+idx = 1
+#argmax(productivity_v[:,1])
 
 for q = 1:8
     Revise.track("AlgaeRiverReactor.jl")

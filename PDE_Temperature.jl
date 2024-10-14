@@ -29,9 +29,11 @@ function HeatTransfer!(dX, T, params, t)
     sigma = params.stefan_boltzmann_constant
     epsilon_water = params.emissivity_water
     epsilon_air = params.emissivity_air
-    diff_concrete = params.thermal_diffusivity_concrete
+    diff_clay = params.thermal_diffusivity_clay
     ground_temperature = params.ground_temperature
-    k_concrete = params.thermal_conductivity_concrete
+    k_clay = params.thermal_conductivity_clay
+    k_plastic = params.thermal_conductivity_plastic
+    l_pla = params.plastic_thickness
 
     L = params.reactor_length                   
     W = params.reactor_width                    
@@ -79,7 +81,7 @@ function HeatTransfer!(dX, T, params, t)
 
     for i in 1:Ny
         M[pos2idx(i,0)] = M[pos2idx(i-1,0)] - dy*(1/Vavg[pos2idx(i-1,0)])*M_Evap(T[pos2idx(i-1,0)])*dy*W
-        Vavg[pos2idx(i,0)] = (M[pos2idx(i-1,0)]*Vavg[pos2idx(i-1,0)])/(M[pos2idx(i,0)])
+        Vavg[pos2idx(i,0)] = sqrt((M[pos2idx(i-1,0)]*Vavg[pos2idx(i-1,0)]^2)/(M[pos2idx(i,0)]))
     end
 
     for i in 0:Ny
@@ -144,8 +146,8 @@ function HeatTransfer!(dX, T, params, t)
     # correlation for laminar flow and averaging the two if in the transisition period.
 
     # Heat Transfer through Ground
-    l_ref = 4400 * diff_concrete^0.5
-    Q_Ground(Temp) = -k_concrete * (Temp - ground_temperature) / l_ref * 3600                 #J/hr/m2     goes out if Temp > ground temperature
+    l_ref = 4400 * diff_clay^0.5
+    Q_Ground(Temp) = -((k_clay *k_plastic*(Temp - ground_temperature)) / (l_ref*k_plastic+l_pla*k_clay)) * 3600                 #J/hr/m2     goes out if Temp > ground temperature
 
     Q_sum1(Temp) = Q_Longwave_Atmo + Q_Rerad(Temp) + Q_Conv(Temp) + Q_Evap(Temp) + Q_Solar
     Q_sum2(Temp) = Q_Ground(Temp)

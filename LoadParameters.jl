@@ -8,7 +8,7 @@ using Debugger
 using BasicInterpolators
 break_on(:error)
 
-function LoadDefaultParameters(filesuffix, l, q, t)
+function LoadDefaultParameters(filesuffix, l, q)
     ## PDE Discretization
     num_odes_y = 100
     num_odes_z = 11
@@ -63,8 +63,13 @@ function LoadDefaultParameters(filesuffix, l, q, t)
     molecular_weight_co2 = 0.04401 #kg/mole                                             # kg / mole
 
     # Construction Material Properties
-    thermal_diffusivity_concrete = 1011.83E0-9                                  #
-    thermal_conductivity_concrete = 1.3                                         # W / m / K
+    thermal_conductivity_clay = 3                                         # W / m / K
+    density_clay = 2650 #kg/m3
+    specific_heat_capacity_clay = 760 #J/kg-k
+    thermal_diffusivity_clay = thermal_conductivity_clay/(density_clay*specific_heat_capacity_clay)                                  # m^2/s
+    #https://open.library.okstate.edu/rainorshine/chapter/13-2-soil-thermal-properties/
+    thermal_conductivity_plastic = 0.50 #W/m/k, https://www.engineeringtoolbox.com/thermal-conductivity-d_429.html
+    plastic_thickness = 1.1/1000 #m
 
     ## Geographic Properties -- Seasonal and daily variations
     global_horizontal_irradiance_data = zeros(8760,1)   # W/m^2
@@ -230,7 +235,8 @@ function LoadDefaultParameters(filesuffix, l, q, t)
     mol_frac_co2 = 0.04 #mol frac of CO2 in gas phase
     mol_frac_air = 1-mol_frac_co2
     kg_mol_gas = mol_frac_co2*(1/molecular_weight_co2) + mol_frac_air*(1/molecular_weight_air) #kg gas/mol
-    floor_oc_coeff = co2_v[t] #fraction of floor area occupied by spargers
+    floor_oc_coeff = 0
+    #co2_v[t] #fraction of floor area occupied by spargers
     tot_area = reactor_width*(reactor_length)*floor_oc_coeff
     mass_flr_gas = (sparge_fpm*(60/3.28)*tot_area)*density_air(292.5) #kg gas/hr
     G = (mass_flr_gas/kg_mol_gas) #molar flow of gas, mol/hr
@@ -287,8 +293,10 @@ function LoadDefaultParameters(filesuffix, l, q, t)
                 diffusion_coeff_co2_water,
                 solubility_co2_water,
                 molecular_weight_co2,
-                thermal_diffusivity_concrete,
-                thermal_conductivity_concrete,
+                thermal_diffusivity_clay,
+                thermal_conductivity_clay,
+                thermal_conductivity_plastic,
+                plastic_thickness,
                 global_horizontal_irradiance_data,
                 ambient_temperature_data,
                 relative_humidity_data,

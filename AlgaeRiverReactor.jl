@@ -49,13 +49,12 @@ module AlgaeRiverReactor
     end
     
     
-    function Run(l, q, t, type)
+    function Run(l, q, type)
         #Units for params can be found in LoadParameters.jl
         include("LoadParameters.jl")        # LoadDefaultParameters
        
             filesuffix1 = ["v_v1", "v_v2", "v_v3", "v_v4", "v_v5", "v_v6", "v_v7", "v_v8"]
             filesuffix2 = ["l_v1", "l_v2", "l_v3", "l_v4", "l_v5", "l_v6", "l_v7", "l_v8"]
-            filesuffix3 = ["c_v1", "c_v2", "c_v3", "c_v4", "c_v5", "c_v6", "c_v7", "c_v8"]
       
 
        
@@ -146,16 +145,12 @@ module AlgaeRiverReactor
        
         if type == 1
             Plot_Biomass_Profile(Mout, CO2_out,DIC_out, Tout, T, params, filesuffix1[l])
-            Plot_Temperature_Profile(Tout, T, params, filesuffix1[l])
-            Plot_CO2_Profile(CO2_out, DIC_out,Tout,T, params, filesuffix1[l])
             Plot_Height_Profile(Tout, T, params, filesuffix1[l])
             Plot_Salinity_Profile(Tout, T, params, filesuffix1[l])
             return Plot_Biomass_Profile(Mout, CO2_out,DIC_out,Tout, T, params, filesuffix1[l]), Plot_Height_Profile(Tout, T, params, filesuffix1[l])
             
         elseif type == 2
             Plot_Biomass_Profile(Mout, CO2_out,DIC_out, Tout, T, params, filesuffix2[q])
-            Plot_Temperature_Profile(Tout, T, params, filesuffix2[q])
-            Plot_CO2_Profile(CO2_out, DIC_out,Tout, T, params, filesuffix2[q])
             Plot_Height_Profile(Tout, T, params, filesuffix2[q])
             Plot_Salinity_Profile(Tout, T, params, filesuffix2[q])
             return Plot_Biomass_Profile(Mout, CO2_out,DIC_out,Tout, T, params, filesuffix2[q]), Plot_Height_Profile(Tout, T, params, filesuffix2[q])
