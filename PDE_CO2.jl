@@ -72,7 +72,7 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, params, t)
 
     for i in 1:Ny
         M[pos2idx(i,0)] = M[pos2idx(i-1,0)] - dy*(1/Vavg[pos2idx(i-1,0)])*M_Evap(Temperature[pos2idx(i-1,0)])*dy*W
-        Vavg[pos2idx(i,0)] = sqrt((M[pos2idx(i-1,0)]*Vavg[pos2idx(i-1,0)]^2)/(M[pos2idx(i,0)]))
+        Vavg[pos2idx(i,0)] = (M[pos2idx(i-1,0)]*Vavg[pos2idx(i-1,0)])/(M[pos2idx(i,0)])
     end
 
     for i in 0:Ny
@@ -236,8 +236,8 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, params, t)
             dCO2[pos2idx(i,j)]=  (D_co2(Temperature[pos2idx(i,j)]) * (CO2_Conc[pos2idx(i-1,j)] + CO2_Conc[pos2idx(min(i+1,Ny),j)] - 2*CO2_Conc[pos2idx(i,j)]) / dy^2           #diffusion CO2 in y-direction
                                    + D_co2(Temperature[pos2idx(i,j)]) * (CO2_Conc[pos2idx(i,j-1)] + CO2_Conc[pos2idx(i,min(j+1,Nz))] - 2*CO2_Conc[pos2idx(i,j)]) / dz_v[pos2idx(i,0)]^2             #diffusion CO2 in z-direction
                                    - (Q[pos2idx(i,j)]*CO2_Conc[pos2idx(i,j)] - Q[pos2idx(i-1,j)]*CO2_Conc[pos2idx(i-1,j)]) / (dy*Ht[pos2idx(i,0)])                            #convection of CO2 in y-direction
-                                   - (R_co2[pos2idx(i,j)])                                                 #consumption of CO2 by biomass growth
-                                   + dC_sparge[pos2idx(i,j)])
+                                   - (R_co2[pos2idx(i,j)]))                                                 #consumption of CO2 by biomass growth
+                                   #+ dC_sparge[pos2idx(i,j)])
                                    #+ Strip_add[pos2idx(i,j)])              
         end
     end

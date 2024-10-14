@@ -63,13 +63,8 @@ function LoadDefaultParameters(filesuffix, l, q)
     molecular_weight_co2 = 0.04401 #kg/mole                                             # kg / mole
 
     # Construction Material Properties
-    thermal_conductivity_clay = 3                                         # W / m / K
-    density_clay = 2650 #kg/m3
-    specific_heat_capacity_clay = 760 #J/kg-k
-    thermal_diffusivity_clay = thermal_conductivity_clay/(density_clay*specific_heat_capacity_clay)                                  # m^2/s
-    #https://open.library.okstate.edu/rainorshine/chapter/13-2-soil-thermal-properties/
-    thermal_conductivity_plastic = 0.50 #W/m/k, https://www.engineeringtoolbox.com/thermal-conductivity-d_429.html
-    plastic_thickness = 1.1/1000 #m
+    thermal_diffusivity_concrete = 1011.83E0-9                                  #
+    thermal_conductivity_concrete = 1.3                                         # W / m / K
 
     ## Geographic Properties -- Seasonal and daily variations
     global_horizontal_irradiance_data = zeros(8760,1)   # W/m^2
@@ -96,7 +91,7 @@ function LoadDefaultParameters(filesuffix, l, q)
 
     ## River Reactor Geometric Properties
 
-    lengths = [25,50,75,100,125,150,175,200]                           # meters
+    lengths = [25, 50, 75, 100, 125, 150, 175, 200]                           # meters
     reactor_length = 200
     real_length = lengths[q]
 
@@ -168,6 +163,8 @@ function LoadDefaultParameters(filesuffix, l, q)
     
     co2_availability_factor(C_co2) = 1
     #((130.43*C_co2)/(4286.4+C_co2+(C_co2^2/0.012898)))*(1/0.114)
+
+
     
     #(C_co2) ./ ((C_co2) + 4.26 + (C_co2)^2/(250)) #unitless, input is CO2 in g/m3
 
@@ -181,7 +178,7 @@ function LoadDefaultParameters(filesuffix, l, q)
     
     co2_per_biomass = 1.88   #kg CO2/kg algae
 
-    co2_v = [0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80]
+    co2_v = [0.80,0.70,0.60,0.50,0.40,0.30,0.20,0.10]
 
     sparge_fpm = 12.5 #fpm, based on standard sparger design range https://mottcorp.com/wp-content/uploads/2020/05/Sparger-Design-Guide.pdf
     
@@ -232,7 +229,7 @@ function LoadDefaultParameters(filesuffix, l, q)
     salinity_in = 35 #g/kg sw
 
     ##co2 properties
-    mol_frac_co2 = 0.04 #mol frac of CO2 in gas phase
+    mol_frac_co2 = 0.0 #mol frac of CO2 in gas phase
     mol_frac_air = 1-mol_frac_co2
     kg_mol_gas = mol_frac_co2*(1/molecular_weight_co2) + mol_frac_air*(1/molecular_weight_air) #kg gas/mol
     floor_oc_coeff = 0
@@ -247,9 +244,10 @@ function LoadDefaultParameters(filesuffix, l, q)
     dMt(T,C,H) = G*(mf - y_out(T,C,H,mf))
     #https://www.sciencedirect.com/science/article/pii/S0960852412012047?casa_token=Dg_MAh0F[%E2%80%A6]RwNik8I_cva5L1jX7aB20_ytLrzqUqHu6U7HcAf2xvkFgdibxBymq8QiTI
 
-    co2_init = 0.4401 #g/m3
-    DIC_init = 2002 #uM
+    co2_init = 22.5 #g/m3
+    DIC_init = 2002+co2_init*(1/(44.01*1000))*1E06 #uM
     pH_init = pH_interp(DIC_init)
+    @show pH_init
     ratio_init = (co2_init*(1/molecular_weight_co2))/DIC_init
 
     salinity_o = salinity_in #kg salt/kg water, obtained from "density of seawater @ 25 oC
@@ -293,10 +291,8 @@ function LoadDefaultParameters(filesuffix, l, q)
                 diffusion_coeff_co2_water,
                 solubility_co2_water,
                 molecular_weight_co2,
-                thermal_diffusivity_clay,
-                thermal_conductivity_clay,
-                thermal_conductivity_plastic,
-                plastic_thickness,
+                thermal_diffusivity_concrete,
+                thermal_conductivity_concrete,
                 global_horizontal_irradiance_data,
                 ambient_temperature_data,
                 relative_humidity_data,

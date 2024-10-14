@@ -74,7 +74,7 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
 
     for i in 1:Ny
         M[pos2idx(i,0)] = M[pos2idx(i-1,0)] - dy*(1/Vavg[pos2idx(i-1,0)])*M_Evap(Temperature[pos2idx(i-1,0)])*dy*W
-        Vavg[pos2idx(i,0)] = sqrt((M[pos2idx(i-1,0)]*Vavg[pos2idx(i-1,0)]^2)/(M[pos2idx(i,0)]))
+        Vavg[pos2idx(i,0)] = (M[pos2idx(i-1,0)]*Vavg[pos2idx(i-1,0)])/(M[pos2idx(i,0)])
     end
 
 
@@ -160,6 +160,8 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
             end
         end
     end
+
+    
 
     
     mw_co2 = params.molecular_weight_co2
