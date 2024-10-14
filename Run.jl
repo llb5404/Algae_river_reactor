@@ -18,6 +18,7 @@ using .AlgaeRiverReactor
 filesuffix1 = ["v_v1", "v_v2", "v_v3", "v_v4", "v_v5", "v_v6", "v_v7", "v_v8"]
 
 productivity_v = zeros(8,3)
+sp_growth_v = zeros(8,3)
 co2_ratio_v = zeros(8,3)
 DIC_v = zeros(8,3)
 pH_out = zeros(8,3)
@@ -27,6 +28,7 @@ len_v = zeros(8,3)
 co2_vec = zeros(8,3)
 final_height = zeros(8,3)
 bm_o_vec = zeros(8,3)
+w_loss = zeros(8,3)
 
 params = LoadDefaultParameters(filesuffix1[1], 8, 1, 1) #constant params
 
@@ -42,6 +44,7 @@ strip_conc_vec = (params.strip_concentration/1000)*ones(8,1)
 #initial co2 conc, initial bm density, initial liquid level
 
 
+tidx = 2
 
 for l = 1:8
     Revise.track("AlgaeRiverReactor.jl")
@@ -52,13 +55,13 @@ for l = 1:8
     Revise.track("MakePlots.jl")
 
     @show Revise.watched_files
-    params = LoadDefaultParameters(filesuffix1[l], 8, 1, 1)
+    params = LoadDefaultParameters(filesuffix1[l], 8, 1, tidx)
 
-    (productivity_v[l,1], co2_ratio_v[l,1], DIC_v[l,1],final_height[l,1],pH_out[l,1], bm_o_vec[l,1]) = AlgaeRiverReactor.Run(l, 8, 1, 1)
-   
+    ((productivity_v[l,1], co2_ratio_v[l,1], DIC_v[l,1],final_height[l,1],pH_out[l,1], bm_o_vec[l,1], sp_growth_v[l,1]), w_loss[l,1]) = AlgaeRiverReactor.Run(l, 8, tidx,1)
+    
     vol_fl_v[l,1] = params.flow_rates[l]
     len_v[l,1] = params.lengths[8]
-    co2_vec[l,1] = params.strip_flr[1]
+    co2_vec[l,1] = params.co2_v[tidx]
 
     @show productivity_v
     @show co2_ratio_v
@@ -68,6 +71,8 @@ for l = 1:8
     @show len_v
     @show final_height
     @show pH_out
+    @show w_loss
+    @show sp_growth_v
 
 end
 
@@ -82,14 +87,14 @@ for q = 1:8
     Revise.track("MakePlots.jl")
 
     @show Revise.watched_files
-    params = LoadDefaultParameters(filesuffix1[q], idx, q, 1)
+    params = LoadDefaultParameters(filesuffix1[q], idx, q, tidx)
 
-    (productivity_v[q,2], co2_ratio_v[q,2], DIC_v[q,2],final_height[q,2],pH_out[q,2], bm_o_vec[q,2]) = AlgaeRiverReactor.Run(idx, q, 1, 2)
+    ((productivity_v[q,2], co2_ratio_v[q,2], DIC_v[q,2],final_height[q,2],pH_out[q,2], bm_o_vec[q,2], sp_growth_v[q,2]), w_loss[q,2]) = AlgaeRiverReactor.Run(idx, q ,tidx,2)
     
 
     vol_fl_v[q,2] = params.flow_rates[idx]
     len_v[q,2] = params.lengths[q]
-    co2_vec[q,2] = params.strip_flr[1]
+    co2_vec[q,2] = params.co2_v[tidx]
 
     @show productivity_v
     @show co2_ratio_v
@@ -99,6 +104,8 @@ for q = 1:8
     @show len_v
     @show final_height
     @show pH_out
+    @show w_loss
+    @show sp_growth_v
 end
 
 idx1 = argmax(productivity_v[:,2])
@@ -115,11 +122,11 @@ for t = 1:8
 
     params = LoadDefaultParameters(filesuffix1[t], idx, idx1, t)
 
-    (productivity_v[t,3], co2_ratio_v[t,3], DIC_v[t,3],final_height[t,3],pH_out[t,3], bm_o_vec[t,3]) = AlgaeRiverReactor.Run(idx, idx1, t, 3)
+    ((productivity_v[t,3], co2_ratio_v[t,3], DIC_v[t,3],final_height[t,3],pH_out[t,3], bm_o_vec[t,3], sp_growth_v[t,3]), w_loss[t,3]) = AlgaeRiverReactor.Run(idx, idx1, t, 3)
    
     vol_fl_v[t,3] = params.flow_rates[idx]
     len_v[t,3] = params.lengths[idx1]
-    co2_vec[t,3] = params.strip_flr[1]
+    co2_vec[t,3] = params.co2_v[t]
 
     @show productivity_v
     @show co2_ratio_v
@@ -129,19 +136,21 @@ for t = 1:8
     @show len_v
     @show final_height
     @show pH_out
+    @show w_loss
+    @show sp_growth_v
 
 end
 
+
  
-vol_v_prod_table = hcat(vol_fl_v[1:8,1],len_v[1:8,1], mol_frac[1:8,1], co2_vec[1:8,1], co2_i_vec[1:8,1], bm_i_vec[1:8,1], bm_o_vec[1:8,1], ll_i_vec[1:8,1], final_height[1:8,1],productivity_v[1:8,1], co2_ratio_v[1:8,1], DIC_v[1:8,1], pH_in[1:8,1], pH_out[1:8,1], strip_conc_vec[1:8,1])
-CSV.write("vol_v_prod.csv", Tables.table(vol_v_prod_table), writeheader = ["Vol Flr (m3/hr)", "Len (m)", "Mol Frac CO2", "Strip Column Flr (gpm)", "CO2 init (g/L)", "BM init (g/L)", "BM out (g/L)","H init (m)", "H final (m)", "ACP","CO2/DIC","DIC (uM)","In pH", "Out pH", "Strip Conc (g/L)"])
+vol_v_prod_table = hcat(vol_fl_v[1:8,1],len_v[1:8,1], mol_frac[1:8,1], co2_vec[1:8,1], co2_i_vec[1:8,1], bm_i_vec[1:8,1], bm_o_vec[1:8,1], ll_i_vec[1:8,1], final_height[1:8,1],productivity_v[1:8,1], co2_ratio_v[1:8,1], DIC_v[1:8,1], pH_in[1:8,1], pH_out[1:8,1], strip_conc_vec[1:8,1], w_loss[1:8,1], sp_growth_v[1:8,1])
+CSV.write("vol_v_prod.csv", Tables.table(vol_v_prod_table), writeheader = ["Vol Flr (m3/hr)", "Len (m)", "Mol Frac CO2", "Floor Occ %", "CO2 init (g/L)", "BM init (g/L)", "BM out (g/L)","H init (m)", "H final (m)", "ACP","CO2/DIC","DIC (uM)","In pH", "Out pH", "Strip Conc (g/L)", "Water Loss (kg)", "Specific Growth Rate (hr-1)"])
 
-len_v_prod_table = hcat(vol_fl_v[1:8,2],len_v[1:8,2], mol_frac[1:8,1], co2_vec[1:8,2], co2_i_vec[1:8,1], bm_i_vec[1:8,1], bm_o_vec[1:8,2], ll_i_vec[1:8,1], final_height[1:8,2],productivity_v[1:8,2], co2_ratio_v[1:8,2], DIC_v[1:8,2], pH_in[1:8,1], pH_out[1:8,2], strip_conc_vec[1:8,1])
-CSV.write("len_v_prod.csv", Tables.table(len_v_prod_table), writeheader = ["Vol Flr (m3/hr)", "Len (m)", "Mol Frac CO2", "Strip Column Flr (gpm)", "CO2 init (g/L)", "BM init (g/L)", "BM out (g/L)", "H init (m)", "H final (m)", "ACP","CO2/DIC","DIC (uM)", "In pH", "Out pH", "Strip Conc (g/L)"])
+len_v_prod_table = hcat(vol_fl_v[1:8,2],len_v[1:8,2], mol_frac[1:8,1], co2_vec[1:8,2], co2_i_vec[1:8,1], bm_i_vec[1:8,1], bm_o_vec[1:8,2], ll_i_vec[1:8,1], final_height[1:8,2],productivity_v[1:8,2], co2_ratio_v[1:8,2], DIC_v[1:8,2], pH_in[1:8,1], pH_out[1:8,2], strip_conc_vec[1:8,1], w_loss[1:8,2], sp_growth_v[1:8,2])
+CSV.write("len_v_prod.csv", Tables.table(len_v_prod_table), writeheader = ["Vol Flr (m3/hr)", "Len (m)", "Mol Frac CO2", "Floor Occ %", "CO2 init (g/L)", "BM init (g/L)", "BM out (g/L)", "H init (m)", "H final (m)", "ACP","CO2/DIC","DIC (uM)", "In pH", "Out pH", "Strip Conc (g/L)", "Water Loss (kg)", "Specific Growth Rate (hr-1)"])
 
-co2_v_prod_table = hcat(vol_fl_v[1:8,3],len_v[1:8,3], mol_frac[1:8,1], co2_vec[1:8,3], co2_i_vec[1:8,1], bm_i_vec[1:8,1], bm_o_vec[1:8,3], ll_i_vec[1:8,1], final_height[1:8,3],productivity_v[1:8,3], co2_ratio_v[1:8,3], DIC_v[1:8,3], pH_in[1:8,1], pH_out[1:8,3], strip_conc_vec[1:8,1])
-CSV.write("co2_v_prod.csv", Tables.table(co2_v_prod_table), writeheader = ["Vol Flr (m3/hr)", "Len (m)", "Mol Frac CO2", "Strip Column Flr (gpm)", "CO2 init (g/L)", "BM init (g/L)", "BM out (g/L)", "H init (m)", "H final (m)", "ACP","CO2/DIC","DIC (uM)", "In pH", "Out pH", "Strip Conc (g/L)"])
-
+co2_v_prod_table = hcat(vol_fl_v[1:8,3],len_v[1:8,3], mol_frac[1:8,1], co2_vec[1:8,3], co2_i_vec[1:8,1], bm_i_vec[1:8,1], bm_o_vec[1:8,3], ll_i_vec[1:8,1], final_height[1:8,3],productivity_v[1:8,3], co2_ratio_v[1:8,3], DIC_v[1:8,3], pH_in[1:8,1], pH_out[1:8,3], strip_conc_vec[1:8,1], w_loss[1:8,3], sp_growth_v[1:8,3])
+CSV.write("co2_v_prod.csv", Tables.table(co2_v_prod_table), writeheader = ["Vol Flr (m3/hr)", "Len (m)", "Mol Frac CO2", "Strip Column Flr (gpm)", "CO2 init (g/L)", "BM init (g/L)", "BM out (g/L)", "H init (m)", "H final (m)", "ACP","CO2/DIC","DIC (uM)", "In pH", "Out pH", "Strip Conc (g/L)", "Water Loss (kg)", "Specific Growth Rate (hr-1)"])
 
 
 

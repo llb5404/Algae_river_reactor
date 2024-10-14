@@ -66,18 +66,30 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
     Ht = zeros(Nelements,1)
     Vavg = zeros(Nelements1)
 
+    M = zeros(Nelements,1)
+
+
+    M[pos2idx(0,0)] = W*dy*H*rho_solution(35)
+    Vavg[pos2idx(0,0)] = params.volumetric_flow_rate_o/(W*H)
+
+    for i in 1:Ny
+        M[pos2idx(i,0)] = M[pos2idx(i-1,0)] - dy*(1/Vavg[pos2idx(i-1,0)])*M_Evap(Temperature[pos2idx(i-1,0)])*dy*W
+        Vavg[pos2idx(i,0)] = (M[pos2idx(i-1,0)]*Vavg[pos2idx(i-1,0)])/(M[pos2idx(i,0)])
+    end
+
+
     for i in 0:Ny
         for j in 0:Nz
-   
+
                 #salinity
                 Sal[pos2idx(i,j)] = S(Temperature[pos2idx(i,j)],i) #kg/m3
                 #height 
 
-                Vavg[pos2idx(i,0)] = params.avg_velocity(Temperature[pos2idx(i,0)], Sal[pos2idx(i,0)], RH, WNDSPD, P_a,i)
+                #Vavg[pos2idx(i,0)] = params.avg_velocity(Temperature[pos2idx(i,0)], Sal[pos2idx(i,0)], RH, WNDSPD, P_a,i)
 
-                Ht[pos2idx(i,j)] = Hght(Temperature[pos2idx(i,j)],i,Sal[pos2idx(i,j)]) #m
+                Ht[pos2idx(i,j)] = Hght(Temperature[pos2idx(i,j)],i,Vavg[pos2idx(i,0)]) #m
                 #increments in z direction
-                dz_v[pos2idx(i,j)] = dz(Temperature[pos2idx(i,j)],i,Sal[pos2idx(i,j)]) #m
+                dz_v[pos2idx(i,j)] = dz(Temperature[pos2idx(i,j)],i,Vavg[pos2idx(i,0)]) #m
 
                 if Re(Ht[pos2idx(0,0)],Temperature[pos2idx(0,0)],Vavg[pos2idx(0,0)]) > 2000
                     V_profile[pos2idx(i,j)] = Vavg[pos2idx(i,0)]
@@ -135,6 +147,20 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
         end
     end
 
+    phiCO2 = zeros(Nelements, 1)
+
+    for i = 0:Ny
+        for j = 0:Nz
+            if  CO2[pos2idx(i,j)] <= 0.1782/0.0315 && CO2[pos2idx(i,j)] >= 0.689655
+                phiCO2[pos2idx(i,j)] = (0.0261*CO2[pos2idx(i,j)] - 0.018)/0.129383
+            elseif CO2[pos2idx(i,j)] > 0.1782/0.0315 && CO2[pos2idx(i,j)] <= 29.67
+                phiCO2[pos2idx(i,j)] = (-0.0054*CO2[pos2idx(i,j)] + 0.1602)/0.129383
+            else
+                phiCO2[pos2idx(i,j)] = 0
+            end
+        end
+    end
+
     
     mw_co2 = params.molecular_weight_co2
     co2_to_M = (1/(mw_co2*1000)) #g/m3 to mol/m3
@@ -145,9 +171,9 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
     for i in 0:Ny
         for j in 0:Nz
 
-            pH[pos2idx(i,j)] = params.pH_interp(min(DIC[pos2idx(i,j)],65000))
+            pH[pos2idx(i,j)] = params.pH_interp(min(DIC[pos2idx(i,j)],70000))
 
-            mu_v[pos2idx(i,j)] = phiL[pos2idx(i,j)]*mu(Temperature[pos2idx(i,j)],Sal[pos2idx(i,j)],CO2[pos2idx(i,j)]) -0.003621
+            mu_v[pos2idx(i,j)] = phiL[pos2idx(i,j)]*phiCO2[pos2idx(i,j)]*mu(Temperature[pos2idx(i,j)],Sal[pos2idx(i,j)],CO2[pos2idx(i,j)]) -0.003621
     
             
         end

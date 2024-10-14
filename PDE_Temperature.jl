@@ -71,6 +71,16 @@ function HeatTransfer!(dX, T, params, t)
     dz_v = zeros(Nelements,1)
     Sal = zeros(Nelements, 1)
     Ht = zeros(Nelements,1)
+    M = zeros(Nelements,1)
+
+
+    M[pos2idx(0,0)] = W*dy*H_o*rho_solution(35)
+    Vavg[pos2idx(0,0)] = params.volumetric_flow_rate_o/(W*H_o)
+
+    for i in 1:Ny
+        M[pos2idx(i,0)] = M[pos2idx(i-1,0)] - dy*(1/Vavg[pos2idx(i-1,0)])*M_Evap(T[pos2idx(i-1,0)])*dy*W
+        Vavg[pos2idx(i,0)] = (M[pos2idx(i-1,0)]*Vavg[pos2idx(i-1,0)])/(M[pos2idx(i,0)])
+    end
 
     for i in 0:Ny
         for j in 0:Nz
@@ -79,11 +89,11 @@ function HeatTransfer!(dX, T, params, t)
                 Sal[pos2idx(i,j)] = S(T[pos2idx(i,j)],i) #kg/m3
                 #height 
 
-                Vavg[pos2idx(i,0)] = params.avg_velocity(T[pos2idx(i,0)], Sal[pos2idx(i,0)], RH, WNDSPD, P_a,i)
+                #Vavg[pos2idx(i,0)] = params.avg_velocity(T[pos2idx(i,0)], Sal[pos2idx(i,0)], RH, WNDSPD, P_a,i)
 
-                Ht[pos2idx(i,j)] = Hght(T[pos2idx(i,j)],i,Sal[pos2idx(i,j)]) #m
+                Ht[pos2idx(i,j)] = Hght(T[pos2idx(i,j)],i,Vavg[pos2idx(i,0)]) #m
                 #increments in z direction
-                dz_v[pos2idx(i,j)] = dz(T[pos2idx(i,j)],i,Sal[pos2idx(i,j)]) #m
+                dz_v[pos2idx(i,j)] = dz(T[pos2idx(i,j)],i,Vavg[pos2idx(i,0)]) #m
 
                 if Re(Ht[pos2idx(0,0)],T[pos2idx(0,0)],Vavg[pos2idx(0,0)]) > 2000
                     V_profile[pos2idx(i,j)] = Vavg[pos2idx(i,0)]

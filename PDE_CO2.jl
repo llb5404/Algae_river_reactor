@@ -16,7 +16,7 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, params, t)
     RH = RH_Data[data_begin + t_hour1] * (t-t_hour1) + RH_Data[data_begin + t_hour2] * (t_hour2 - t)
     WNDSPD = max.((WNDSPD_Data[data_begin + t_hour1] * (t-t_hour1) + WNDSPD_Data[data_begin + t_hour2] * (t_hour2 - t)),0)
 
-    mu_model(T,S,C_co2) = params.biomass_specific_growth_rate(T, S, C_co2)
+    mu_model(T,S,Co2) = params.biomass_specific_growth_rate(T, S, Co2)
     co2_per_biomass = params.co2_per_biomass
     bm = params.max_biomass_specific_growth_rate
     L = params.reactor_length
@@ -64,17 +64,27 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, params, t)
     Ht = zeros(Ny + 1,1)
     R_co2 = zeros(Nelements,1)
     mu_v = zeros(Nelements, 1)
+    M = zeros(Nelements,1)
+
+
+    M[pos2idx(0,0)] = W*dy*H*rho_solution(35)
+    Vavg[pos2idx(0,0)] = params.volumetric_flow_rate_o/(W*H)
+
+    for i in 1:Ny
+        M[pos2idx(i,0)] = M[pos2idx(i-1,0)] - dy*(1/Vavg[pos2idx(i-1,0)])*M_Evap(Temperature[pos2idx(i-1,0)])*dy*W
+        Vavg[pos2idx(i,0)] = (M[pos2idx(i-1,0)]*Vavg[pos2idx(i-1,0)])/(M[pos2idx(i,0)])
+    end
 
     for i in 0:Ny
  
                 #salinity
             Sal[pos2idx(i,0)] = S(Temperature[pos2idx(i,0)],i) #kg/m3
                 #height 
-            Vavg[pos2idx(i,0)] = params.avg_velocity(Temperature[pos2idx(i,0)], Sal[pos2idx(i,0)], RH, WNDSPD, P_a,i)
+            #Vavg[pos2idx(i,0)] = params.avg_velocity(Temperature[pos2idx(i,0)], Sal[pos2idx(i,0)], RH, WNDSPD, P_a,i)
 
-            Ht[pos2idx(i,0)] = Hght(Temperature[pos2idx(i,0)],i,Sal[pos2idx(i,0)]) #m
+            Ht[pos2idx(i,0)] = Hght(Temperature[pos2idx(i,0)],i,Vavg[pos2idx(i,0)]) #m
                 #increments in z direction
-            dz_v[pos2idx(i,0)] = dz(Temperature[pos2idx(i,0)],i,Sal[pos2idx(i,0)]) #m
+            dz_v[pos2idx(i,0)] = dz(Temperature[pos2idx(i,0)],i,Vavg[pos2idx(i,0)]) #m
     end
 
     co2_availability_factor(C_co2) = params.co2_availability_factor(C_co2)
@@ -127,13 +137,27 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, params, t)
     co2_to_M = (1/(mw_co2*1000)) #g/m3 to mol/m3
     pH = zeros(Nelements,1)
 
+    phiCO2 = zeros(Nelements, 1)
+
+    for i = 0:Ny
+        for j = 0:Nz
+            if  C[pos2idx(i,j)] <= 0.1782/0.0315 && C[pos2idx(i,j)] >= 0.689655
+                phiCO2[pos2idx(i,j)] = (0.0261*C[pos2idx(i,j)] - 0.018)/0.129383
+            elseif C[pos2idx(i,j)] > 0.1782/0.0315 && C[pos2idx(i,j)] <= 29.67
+                phiCO2[pos2idx(i,j)] = (-0.0054*C[pos2idx(i,j)] + 0.1602)/0.129383
+            else
+                phiCO2[pos2idx(i,j)] = 0
+            end
+        end
+    end
+
     for i = 0:Ny
         for j = 0:Nz
             I_avg[pos2idx(i,j)] = sum(I_avg_vec[1:301,pos2idx(i,j)])
             phiL[pos2idx(i,j)] = tanh((Y_xphm*a_x*I_avg[pos2idx(i,j)]*1E-06)/(bm*(1/3600))) #umol to mol
-            pH[pos2idx(i,j)] = params.pH_interp(min(DIC[pos2idx(i,j)],65000))
+            pH[pos2idx(i,j)] = params.pH_interp(min(DIC[pos2idx(i,j)],70000))
             
-            mu_v[pos2idx(i,j)] = phiL[pos2idx(i,j)]*mu_model(Temperature[pos2idx(i,j)],Sal[pos2idx(i,0)],C[pos2idx(i,j)])-0.003621  #1/hr
+            mu_v[pos2idx(i,j)] = phiL[pos2idx(i,j)]*phiCO2[pos2idx(i,j)]*mu_model(Temperature[pos2idx(i,j)],Sal[pos2idx(i,0)],C[pos2idx(i,j)])-0.003621  #1/hr
             #0.00361 is maintenance rate from Krishnan et al.
             
             R_co2[pos2idx(i,j)] = co2_per_biomass * mu_v[pos2idx(i,j)] * ((C_biomass[pos2idx(i,j)])*1000) #uptake of co2 by biomass, g/m3/hr
@@ -148,8 +172,8 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, params, t)
         end
     end
 
-    for i = 1:Ny
-        C[pos2idx(i,0)] =  params.co2_init #initial CO2
+    for i = 0:Ny
+        C[pos2idx(i,0)] =  0.4401 #initial CO2
         dCO2[pos2idx(i,0)] = 0
         
     end
@@ -213,18 +237,20 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, params, t)
                                    + D_co2(Temperature[pos2idx(i,j)]) * (CO2_Conc[pos2idx(i,j-1)] + CO2_Conc[pos2idx(i,min(j+1,Nz))] - 2*CO2_Conc[pos2idx(i,j)]) / dz_v[pos2idx(i,0)]^2             #diffusion CO2 in z-direction
                                    - (Q[pos2idx(i,j)]*CO2_Conc[pos2idx(i,j)] - Q[pos2idx(i-1,j)]*CO2_Conc[pos2idx(i-1,j)]) / (dy*Ht[pos2idx(i,0)])                            #convection of CO2 in y-direction
                                    - (R_co2[pos2idx(i,j)])                                                 #consumption of CO2 by biomass growth
-                                   + dC_sparge[pos2idx(i,j)]
-                                   + Strip_add[pos2idx(i,j)])              
+                                   + dC_sparge[pos2idx(i,j)])
+                                   #+ Strip_add[pos2idx(i,j)])              
         end
     end
     
     dDIC .= dCO2.*co2_to_M.*1000
 
     C_new = zeros(Nelements,1)
+
+    
     for i = 0:Ny
         for j = 0:Nz
             DIC_new = max(DIC[pos2idx(i,j)]+ dDIC[pos2idx(i,j)],1E-09)
-            C_new[pos2idx(i,j)] = params.CO2_interp(min(DIC_new,65000)) #calculate new CO2 after DIC dissociates
+            C_new[pos2idx(i,j)] = params.CO2_interp(min(DIC_new,70000)) #calculate new CO2 after DIC dissociates
         end
     end
     
@@ -234,6 +260,7 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, params, t)
            dCO2[pos2idx(i,j)] = C_new[pos2idx(i,j)] - C[pos2idx(i,j)] #this sets the new CO2 value to C_new
         end
     end
+    
    
     @views dX[1+2*Nelements:3*Nelements] .= dCO2        # order matters! The @views operator takes a slice out of an array without making a copy.
     @views dX[1+3*Nelements:4*Nelements] .= dDIC
