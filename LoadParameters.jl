@@ -63,13 +63,8 @@ function LoadDefaultParameters(filesuffix, l, q, t)
     molecular_weight_co2 = 0.04401 #kg/mole                                             # kg / mole
 
     # Construction Material Properties
-    thermal_conductivity_clay = 3                                         # W / m / K
-    density_clay = 2650 #kg/m3
-    specific_heat_capacity_clay = 760 #J/kg-k
-    thermal_diffusivity_clay = thermal_conductivity_clay/(density_clay*specific_heat_capacity_clay)                                  # m^2/s
-    #https://open.library.okstate.edu/rainorshine/chapter/13-2-soil-thermal-properties/
-    thermal_conductivity_plastic = 0.50 #W/m/k, https://www.engineeringtoolbox.com/thermal-conductivity-d_429.html
-    plastic_thickness = 1.1/1000 #m
+    thermal_diffusivity_concrete = 1011.83E0-9                                  #
+    thermal_conductivity_concrete = 1.3                                         # W / m / K
 
     ## Geographic Properties -- Seasonal and daily variations
     global_horizontal_irradiance_data = zeros(8760,1)   # W/m^2
@@ -96,7 +91,7 @@ function LoadDefaultParameters(filesuffix, l, q, t)
 
     ## River Reactor Geometric Properties
 
-    lengths = [25,50,75,100,125,150,175,200]                           # meters
+    lengths = [200,200,200,200,200,200,200,200]                           # meters
     reactor_length = 200
     real_length = lengths[q]
 
@@ -117,20 +112,24 @@ function LoadDefaultParameters(filesuffix, l, q, t)
     volumetric_flow_rate_o = flow_rates[l] #m^3/hr
 
     strip_flr = [8.5,7.5,6.5,5.5,4.5,3.5,2.5,1.5] #gpm (within range of low flr pumps on McMaster Carr)
-    gpm = 0
-    #strip_flr[t]
+    gpm = strip_flr[t]
     volumetric_flow_rate_strip = gpm*0.00379*60 #m3/hr
     @show volumetric_flow_rate_strip
-    strip_position = [trunc(Int,num_odes_y/2)] #halfway through reactor
+    strip_position = [trunc(Int,num_odes_y/7),trunc(Int,2*num_odes_y/7),trunc(Int,3*num_odes_y/7),trunc(Int,4*num_odes_y/7),trunc(Int,5*num_odes_y/7),trunc(Int,6*num_odes_y/7)] #halfway through reactor
     @show strip_position
-    strip_concentration = 1500 #g/m3, saturated
+    s_conc = [25,50,75,100,125,150,175,200]
+    strip_concentration = s_conc[q] #g/m3, saturated
     
     avg_velocity_o = volumetric_flow_rate_o/(reactor_initial_liquid_level*reactor_width)
     mass_o(T) = density_water(T)*reactor_initial_liquid_level*(reactor_length/num_odes_y)*reactor_width
     
-    volumetric_flow_rate(T,W,R_H,P,x) = max((volumetric_flow_rate_o -evaporation_mass_flux(T,W,R_H,P)*(reactor_width/density_water(T))*x*(reactor_length/num_odes_y)),0)
-    
-    #+ volumetric_flow_rate_strip*(max(x-(strip_position[1]-1),0)/max(abs(x-(strip_position[1]-1)),1)) ) 
+    volumetric_flow_rate(T,W,R_H,P,x) = (max((volumetric_flow_rate_o -evaporation_mass_flux(T,W,R_H,P)*(reactor_width/density_water(T))*x*(reactor_length/num_odes_y)),0) 
+    + volumetric_flow_rate_strip*(max(x-(strip_position[1]-1),0)/max(abs(x-(strip_position[1]-1)),1))
+    + volumetric_flow_rate_strip*(max(x-(strip_position[2]-1),0)/max(abs(x-(strip_position[2]-1)),1))
+    + volumetric_flow_rate_strip*(max(x-(strip_position[3]-1),0)/max(abs(x-(strip_position[3]-1)),1))
+    + volumetric_flow_rate_strip*(max(x-(strip_position[4]-1),0)/max(abs(x-(strip_position[4]-1)),1))
+    + volumetric_flow_rate_strip*(max(x-(strip_position[5]-1),0)/max(abs(x-(strip_position[5]-1)),1))
+    + volumetric_flow_rate_strip*(max(x-(strip_position[6]-1),0)/max(abs(x-(strip_position[6]-1)),1)))
 
     term(V,H) = V/((2/3)*H^2)
     velocity_profile_lam(V,y,H) = term(V,H)*((H-y*(H/num_odes_z))*H + 0.5*(H-y*(H/num_odes_z))^2)
@@ -143,7 +142,7 @@ function LoadDefaultParameters(filesuffix, l, q, t)
     ground_temperature = 290.0                          # Kelvin
 
     ## Biomass Properties
-    input_biomass_concentration = 3000 / 1000.0         # kg/m^3
+    input_biomass_concentration = 3000.0 / 1000.0         # kg/m^3
     max_biomass_concentration = 10000.0 / 1000.0        # kg/m^3 where light is 100% absorbed
     max_biomass_light_saturation = 900.0 / 4.57         # 900 μmol m−2 s−1 converted to W/m^2
     max_biomass_specific_growth_rate = 7.9/24   # 1 / hour (obtained from Krishnan at T_opt, 35 salinity)
@@ -181,7 +180,7 @@ function LoadDefaultParameters(filesuffix, l, q, t)
     
     co2_per_biomass = 1.88   #kg CO2/kg algae
 
-    co2_v = [0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80]
+    co2_v = [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0]
 
     sparge_fpm = 12.5 #fpm, based on standard sparger design range https://mottcorp.com/wp-content/uploads/2020/05/Sparger-Design-Guide.pdf
     
@@ -232,11 +231,10 @@ function LoadDefaultParameters(filesuffix, l, q, t)
     salinity_in = 35 #g/kg sw
 
     ##co2 properties
-    mol_frac_co2 = 0.04 #mol frac of CO2 in gas phase
+    mol_frac_co2 = 0.0 #mol frac of CO2 in gas phase
     mol_frac_air = 1-mol_frac_co2
     kg_mol_gas = mol_frac_co2*(1/molecular_weight_co2) + mol_frac_air*(1/molecular_weight_air) #kg gas/mol
-    floor_oc_coeff = 0
-    #co2_v[t] #fraction of floor area occupied by spargers
+    floor_oc_coeff = co2_v[t] #fraction of floor area occupied by spargers
     tot_area = reactor_width*(reactor_length)*floor_oc_coeff
     mass_flr_gas = (sparge_fpm*(60/3.28)*tot_area)*density_air(292.5) #kg gas/hr
     G = (mass_flr_gas/kg_mol_gas) #molar flow of gas, mol/hr
@@ -247,7 +245,7 @@ function LoadDefaultParameters(filesuffix, l, q, t)
     dMt(T,C,H) = G*(mf - y_out(T,C,H,mf))
     #https://www.sciencedirect.com/science/article/pii/S0960852412012047?casa_token=Dg_MAh0F[%E2%80%A6]RwNik8I_cva5L1jX7aB20_ytLrzqUqHu6U7HcAf2xvkFgdibxBymq8QiTI
 
-    co2_init = 0.4401 #g/m3
+    co2_init = 22.5 #g/m3
     DIC_init = 2002 #uM
     pH_init = pH_interp(DIC_init)
     ratio_init = (co2_init*(1/molecular_weight_co2))/DIC_init
@@ -293,10 +291,8 @@ function LoadDefaultParameters(filesuffix, l, q, t)
                 diffusion_coeff_co2_water,
                 solubility_co2_water,
                 molecular_weight_co2,
-                thermal_diffusivity_clay,
-                thermal_conductivity_clay,
-                thermal_conductivity_plastic,
-                plastic_thickness,
+                thermal_diffusivity_concrete,
+                thermal_conductivity_concrete,
                 global_horizontal_irradiance_data,
                 ambient_temperature_data,
                 relative_humidity_data,
@@ -363,7 +359,8 @@ function LoadDefaultParameters(filesuffix, l, q, t)
                 volumetric_flow_rate_strip,
                 strip_concentration,
                 strip_flr,
-                real_length
+                real_length,
+                s_conc
                 )
 
     # Write parameters to file

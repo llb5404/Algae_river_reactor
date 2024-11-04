@@ -74,7 +74,7 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
 
     for i in 1:Ny
         M[pos2idx(i,0)] = M[pos2idx(i-1,0)] - dy*(1/Vavg[pos2idx(i-1,0)])*M_Evap(Temperature[pos2idx(i-1,0)])*dy*W
-        Vavg[pos2idx(i,0)] = (M[pos2idx(i-1,0)]*Vavg[pos2idx(i-1,0)])/(M[pos2idx(i,0)])
+        Vavg[pos2idx(i,0)] = sqrt((M[pos2idx(i-1,0)]*(Vavg[pos2idx(i-1,0)])^2)/(M[pos2idx(i,0)]))
     end
 
 
@@ -147,6 +147,14 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
         end
     end
 
+    
+    mw_co2 = params.molecular_weight_co2
+    co2_to_M = (1/(mw_co2*1000)) #g/m3 to mol/m3
+
+    #Vector of specific growth rate values
+    mu_v = zeros(Nelements, 1)
+    pH = zeros(Nelements,1)
+
     phiCO2 = zeros(Nelements, 1)
 
     for i = 0:Ny
@@ -161,21 +169,12 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature, params, t)
         end
     end
 
-    
-
-    
-    mw_co2 = params.molecular_weight_co2
-    co2_to_M = (1/(mw_co2*1000)) #g/m3 to mol/m3
-
-    #Vector of specific growth rate values
-    mu_v = zeros(Nelements, 1)
-    pH = zeros(Nelements,1)
     for i in 0:Ny
         for j in 0:Nz
 
             pH[pos2idx(i,j)] = params.pH_interp(min(DIC[pos2idx(i,j)],70000))
 
-            mu_v[pos2idx(i,j)] = phiL[pos2idx(i,j)]*phiCO2[pos2idx(i,j)]*mu(Temperature[pos2idx(i,j)],Sal[pos2idx(i,j)],CO2[pos2idx(i,j)]) -0.003621
+            mu_v[pos2idx(i,j)] = phiCO2[pos2idx(i,j)]*phiL[pos2idx(i,j)]*mu(Temperature[pos2idx(i,j)],Sal[pos2idx(i,j)],CO2[pos2idx(i,j)]) -0.003621
     
             
         end

@@ -114,7 +114,7 @@ function Plot_Biomass_Profile(Mout, CO2_out, DIC_out,Tout, T, params, filesuffix
     for i in 1:TL
         for j in 1:Ny
             M[i, pos2idx(j,0)] = M[i, pos2idx(j-1,0)] - dy*(1/Vavg[i, pos2idx(j-1,0)])*params.evaporation_mass_flux(Tout[i,pos2idx(j-1,0)],WNDSPDout[i],RHout[i],Pa_out[i])*dy*W
-            Vavg[i, pos2idx(j,0)] = (M[i, pos2idx(j-1,0)]*Vavg[i, pos2idx(j-1,0)])/(M[i, pos2idx(j,0)])
+            Vavg[i, pos2idx(j,0)] = sqrt((M[i, pos2idx(j-1,0)]*(Vavg[i, pos2idx(j-1,0)])^2)/(M[i, pos2idx(j,0)]))
         end
     end
 
@@ -236,26 +236,11 @@ function Plot_Biomass_Profile(Mout, CO2_out, DIC_out,Tout, T, params, filesuffix
     a_x = 4.81 #absorbance cross section, m2/mol
     phiL = zeros(TL,Nelements)
 
-    phiCO2 = zeros(TL, Nelements)
-
-    for i = 1:TL
-        for j = 0:Ny
-            for k = 0:Nz
-                if  CO2_out[i, pos2idx(j,k)] <= 0.1782/0.0315
-                    phiCO2[i, pos2idx(j,k)] = (0.0261*CO2_out[i, pos2idx(j,k)] - 0.018)/0.129383
-                else
-                    phiCO2[i, pos2idx(j,k)] = (-0.0054*CO2_out[i, pos2idx(j,k)] + 0.1602)/0.129383
-                end
-            end
-        end
-    end
-
-
     for i = 1:TL
         for j = 0:Ny
             for k = 0:Nz
                 phiL[i,pos2idx(j,k)] = tanh((Y_xphm*a_x*I_avg[i,pos2idx(j,k)]*1E-06)/(bm*(1/3600))) #umol to mol
-                mu_out[i,pos2idx1(k)] = params.biomass_specific_growth_rate(Tout[i,pos2idx(Ny_new,k)], Sout[i,pos2idx(Ny_new,0)], CO2_out[i,pos2idx(Ny_new,k)])*phiL[i,pos2idx(Ny_new,k)]*phiCO2[i, pos2idx(Ny_new,k)]
+                mu_out[i,pos2idx1(k)] = params.biomass_specific_growth_rate(Tout[i,pos2idx(Ny_new,k)], Sout[i,pos2idx(Ny_new,0)], CO2_out[i,pos2idx(Ny_new,k)])*phiL[i,pos2idx(Ny_new,k)]
             end
         end
     end
@@ -381,14 +366,6 @@ function Plot_Biomass_Profile(Mout, CO2_out, DIC_out,Tout, T, params, filesuffix
             Lout2D[j+1,i+1] = I_avg[TL,pos2idx(i,j)]
         end
     end
-
-    Lout2D2 = zeros(Nz+1,Ny_new+1)
-    for i in 0:Ny_new
-        for j in 0:Nz
-            Lout2D2[j+1,i+1] = Statistics.mean(I_avg[max(1,TL-100):TL, pos2idx(i,j)])
-        end
-    end
-
  
     Vout2D = zeros(Nz+1,Ny_new+1)
     for i in 0:Ny_new
@@ -406,13 +383,26 @@ function Plot_Biomass_Profile(Mout, CO2_out, DIC_out,Tout, T, params, filesuffix
         end
     end
 
+    Lout2D = zeros(Nz+1,Ny_new+1)
+    for i in 0:Ny_new
+        for j in 0:Nz
+            Lout2D[j+1,i+1] = I_avg[TL,pos2idx(i,j)]
+        end
+    end
 
-    CSV.write("Biomass_Dens_$filesuffix.csv", Tables.table(Avg_Conc_y),writeheader = false)
-    CSV.write("Biomass_HM_$filesuffix.csv", Tables.table(Mout2D), writeheader = false)
-    CSV.write("Vel_HM.csv", Tables.table(Vout2D), writeheader = false)
+    Lout2D2 = zeros(Nz+1,Ny_new+1)
+    for i in 0:Ny_new
+        for j in 0:Nz
+            Lout2D2[j+1,i+1] = Statistics.mean(I_avg[max(1,TL-100):TL, pos2idx(i,j)])
+        end
+    end
     CSV.write("phiL_HM_$filesuffix.csv", Tables.table(Lout2D), writeheader = false)
     CSV.write("phiL_HM_2$filesuffix.csv", Tables.table(Lout2D2), writeheader = false)
     CSV.write("Vol_HM_$filesuffix.csv", Tables.table(Qout2D), writeheader = false)
+    CSV.write("Biomass_Dens_$filesuffix.csv", Tables.table(Avg_Conc_y),writeheader = false)
+    CSV.write("Biomass_HM_$filesuffix.csv", Tables.table(Mout2D), writeheader = false)
+    CSV.write("Vel_HM.csv", Tables.table(Vout2D), writeheader = false)
+    CSV.write("phiL_HM.csv", Tables.table(Lout2D), writeheader = false)
 
     q = heatmap(Y, Z, Mout2D,
             yflip=true,
@@ -443,8 +433,6 @@ function Plot_Biomass_Profile(Mout, CO2_out, DIC_out,Tout, T, params, filesuffix
 
     savefig(q2, "LightProfile_AlgaeRiverReactor_$filesuffix.ps")
     png("LightProfile_AlgaeRiverReactor_$filesuffix")
-
-
 
     Average_ratio = 0
     ratio = zeros(Nz+1)
@@ -895,7 +883,7 @@ function Plot_Height_Profile(Tout, T, params, filesuffix)
     for i in 1:TL
         for j in 1:Ny
             M[i, pos2idx(j,0)] = M[i, pos2idx(j-1,0)] - dy*(1/Vavg[i, pos2idx(j-1,0)])*params.evaporation_mass_flux(Tout[i,pos2idx(j-1,0)],WNDSPDout[i],RHout[i],Pa_out[i])*dy*W
-            Vavg[i, pos2idx(j,0)] = (M[i, pos2idx(j-1,0)]*Vavg[i, pos2idx(j-1,0)])/(M[i, pos2idx(j,0)])
+            Vavg[i, pos2idx(j,0)] = sqrt((M[i, pos2idx(j-1,0)]*(Vavg[i, pos2idx(j-1,0)])^2)/(M[i, pos2idx(j,0)]))
         end
     end
     
@@ -1102,8 +1090,6 @@ function Plot_Salinity_Profile(Tout, T, params, filesuffix)
     )
     savefig(q1, "SalinityHM_AlgaeRiverReactor_$filesuffix.ps")
     png("SalinityHM_AlgaeRiverReactor_$filesuffix")
-
-
     
 
     P(S) = Statistics.mean(S[:,pos2idx(0:Ny_new,0)], dims = 2) #mean salinity across reactor, kg/m3

@@ -72,7 +72,7 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, params, t)
 
     for i in 1:Ny
         M[pos2idx(i,0)] = M[pos2idx(i-1,0)] - dy*(1/Vavg[pos2idx(i-1,0)])*M_Evap(Temperature[pos2idx(i-1,0)])*dy*W
-        Vavg[pos2idx(i,0)] = (M[pos2idx(i-1,0)]*Vavg[pos2idx(i-1,0)])/(M[pos2idx(i,0)])
+        Vavg[pos2idx(i,0)] = sqrt((M[pos2idx(i-1,0)]*(Vavg[pos2idx(i-1,0)])^2)/(M[pos2idx(i,0)]))
     end
 
     for i in 0:Ny
@@ -157,7 +157,7 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, params, t)
             phiL[pos2idx(i,j)] = tanh((Y_xphm*a_x*I_avg[pos2idx(i,j)]*1E-06)/(bm*(1/3600))) #umol to mol
             pH[pos2idx(i,j)] = params.pH_interp(min(DIC[pos2idx(i,j)],70000))
             
-            mu_v[pos2idx(i,j)] = phiL[pos2idx(i,j)]*phiCO2[pos2idx(i,j)]*mu_model(Temperature[pos2idx(i,j)],Sal[pos2idx(i,0)],C[pos2idx(i,j)])-0.003621  #1/hr
+            mu_v[pos2idx(i,j)] = phiCO2[pos2idx(i,j)]*phiL[pos2idx(i,j)]*mu_model(Temperature[pos2idx(i,j)],Sal[pos2idx(i,0)],C[pos2idx(i,j)])-0.003621  #1/hr
             #0.00361 is maintenance rate from Krishnan et al.
             
             R_co2[pos2idx(i,j)] = co2_per_biomass * mu_v[pos2idx(i,j)] * ((C_biomass[pos2idx(i,j)])*1000) #uptake of co2 by biomass, g/m3/hr
@@ -232,13 +232,19 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, params, t)
         for j=1:Nz
 
             Strip_add[pos2idx(strip_pos[1],j)] = (strip_Q*strip_C)/(Ht[pos2idx(strip_pos[1],0)]*dy*W)
+            Strip_add[pos2idx(strip_pos[2],j)] = (strip_Q*strip_C)/(Ht[pos2idx(strip_pos[2],0)]*dy*W)
+            Strip_add[pos2idx(strip_pos[3],j)] = (strip_Q*strip_C)/(Ht[pos2idx(strip_pos[3],0)]*dy*W)
+            Strip_add[pos2idx(strip_pos[4],j)] = (strip_Q*strip_C)/(Ht[pos2idx(strip_pos[4],0)]*dy*W)
+            Strip_add[pos2idx(strip_pos[5],j)] = (strip_Q*strip_C)/(Ht[pos2idx(strip_pos[5],0)]*dy*W)
+            Strip_add[pos2idx(strip_pos[6],j)] = (strip_Q*strip_C)/(Ht[pos2idx(strip_pos[6],0)]*dy*W)
 
             dCO2[pos2idx(i,j)]=  (D_co2(Temperature[pos2idx(i,j)]) * (CO2_Conc[pos2idx(i-1,j)] + CO2_Conc[pos2idx(min(i+1,Ny),j)] - 2*CO2_Conc[pos2idx(i,j)]) / dy^2           #diffusion CO2 in y-direction
                                    + D_co2(Temperature[pos2idx(i,j)]) * (CO2_Conc[pos2idx(i,j-1)] + CO2_Conc[pos2idx(i,min(j+1,Nz))] - 2*CO2_Conc[pos2idx(i,j)]) / dz_v[pos2idx(i,0)]^2             #diffusion CO2 in z-direction
                                    - (Q[pos2idx(i,j)]*CO2_Conc[pos2idx(i,j)] - Q[pos2idx(i-1,j)]*CO2_Conc[pos2idx(i-1,j)]) / (dy*Ht[pos2idx(i,0)])                            #convection of CO2 in y-direction
-                                   - (R_co2[pos2idx(i,j)]))                                                 #consumption of CO2 by biomass growth
+                                   - (R_co2[pos2idx(i,j)])
+                                   + Strip_add[pos2idx(i,j)])                                                 #consumption of CO2 by biomass growth
                                    #+ dC_sparge[pos2idx(i,j)])
-                                   #+ Strip_add[pos2idx(i,j)])              
+                                                
         end
     end
     
