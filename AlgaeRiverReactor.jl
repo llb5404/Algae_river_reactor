@@ -7,7 +7,7 @@ module AlgaeRiverReactor
     using DataFrames
     #using JDL2
     using Plots; gr()
-    using Symbolics, SparseArrays
+    using SparseArrays
     import Statistics
 
 
@@ -21,7 +21,6 @@ module AlgaeRiverReactor
     include("PDE_AlgaeBiomass.jl")      # PDE_AlgaeBiomass!
     include("PDE_Temperature.jl")       # HeatTransfer!
     include("MakePlots.jl")             # Plot_Biomass_Profile, Plot_Temperature_Profile, etc.
-
     include("PDE_CO2.jl")               #Carbon Flux
    
     
@@ -36,8 +35,6 @@ module AlgaeRiverReactor
         Temperature = X[Nelements+1:2*Nelements]
         CO2 = X[2*Nelements+1:3*Nelements]
         DIC = X[3*Nelements+1:4*Nelements]
-        
-        # more ....
 
         PDE_AlgaeBiomass!(dX, C_biomass, DIC, CO2, Temperature, params, t)      # changes dX
         HeatTransfer!(dX, Temperature, params, t)          # changes dX
@@ -49,51 +46,28 @@ module AlgaeRiverReactor
     end
     
     
-    function Run(l, q, type)
-        #Units for params can be found in LoadParameters.jl
+    function Run(l, q)
+       
         include("LoadParameters.jl")        # LoadDefaultParameters
-       
-            filesuffix1 = ["v_v1", "v_v2", "v_v3", "v_v4", "v_v5", "v_v6", "v_v7", "v_v8"]
-            filesuffix2 = ["l_v1", "l_v2", "l_v3", "l_v4", "l_v5", "l_v6", "l_v7", "l_v8"]
-      
 
-       
         ## Load Parameters
-        if type == 1
-            params = LoadDefaultParameters(filesuffix1[l], l, q)
-        elseif type == 2
-            params = LoadDefaultParameters(filesuffix2[q], l, q)
-        end
-
-       
+        params = LoadDefaultParameters(l, q)
 
         Time_end = params.time_end
-        Time_interval = params.time_interval
+
         Ny = params.num_odes_y
         Nz = params.num_odes_z
-
-    
-
         Nelements = (Ny+1) * (Nz+1)
         pos2idx(y,z) = (y.+1) .+ z.*(Ny.+1)
         idx2pos(pos) = [Integer(pos - 1 - (Ny+1) * floor( (pos-1) ./ (Ny.+1))), Integer(floor( (pos-1) ./ (Ny.+1)))]
 
-
-
-        C_biomass_in = params.input_biomass_concentration
-        Temperature_in = params.input_temperature
+        C_biomass_in = params.input_biomass_concentration #g/L
+        Temperature_in = params.input_temperature #K
         CO2_in = params.co2_init #g/m3
         DIC_in = params.DIC_init #umol/L, remember this excludes CO2
 
-        L = params.reactor_length
-        W = params.reactor_width
-        H = params.reactor_initial_liquid_level
-
         Nz = params.num_odes_z
         Ny = params.num_odes_y
-
-        dz = H/Nz
-        dy = L/Ny
      
         #ICs: initial conditions at t = 0
         C_biomass_o = zeros( (Ny+1) * (Nz+1), 1)
@@ -103,9 +77,6 @@ module AlgaeRiverReactor
         CO2_o[pos2idx(0,1:Nz)] .= CO2_in
         DIC_o = (ones( (Ny+1) * (Nz+1), 1) .* DIC_in)
         tspan = (0.0, Time_end)
-
-    
-        
 
         Xo = [C_biomass_o; Temperature_o; CO2_o;DIC_o]
         @show tspan
@@ -140,17 +111,8 @@ module AlgaeRiverReactor
             DIC_out[i,:] .= sol.u[i][3*Nelements+1:4*Nelements]
             
         end
-       
-        if type == 1
-            Plot_Biomass_Profile(Mout, CO2_out,DIC_out, Tout, T, params, filesuffix1[l])
-            Plot_Height_Profile(Tout, T, params, filesuffix1[l])
-            return Plot_Biomass_Profile(Mout, CO2_out,DIC_out,Tout, T, params, filesuffix1[l]), Plot_Height_Profile(Tout, T, params, filesuffix1[l])
-            
-        elseif type == 2
-            Plot_Biomass_Profile(Mout, CO2_out,DIC_out, Tout, T, params, filesuffix2[q])
-            Plot_Height_Profile(Tout, T, params, filesuffix2[q])
-            return Plot_Biomass_Profile(Mout, CO2_out,DIC_out,Tout, T, params, filesuffix2[q]), Plot_Height_Profile(Tout, T, params, filesuffix1[l])
-        end
+        
+        return Plot_Biomass_Profile(Mout, CO2_out,DIC_out,Tout, T, params)
 
     end
     export Run
