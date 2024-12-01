@@ -55,6 +55,7 @@ function Plot_Biomass_Profile(Mout, CO2_out, DIC_out,Tout, T, params)
         t_hour2 = floor(Int64, T[i])+1
         Tambout[i] = (Tamb_Data[data_begin + t_hour1]*(T[i]-t_hour1)+Tamb_Data[data_begin + t_hour2]*(t_hour2-T[i]))
     end
+    T_days = T ./ 24.0
     
     P_a(Tamb) = params.saturated_vapor_pressure_water_air(Tamb) #Pa
     Pa_out = zeros(TL, 1) #Pa

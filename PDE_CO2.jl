@@ -139,6 +139,20 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, params, t)
     #average light intensity summed across all wavelengths
     I_avg = zeros(Nelements,1)
 
+    phiCO2 = zeros(Nelements, 1)
+
+    for i = 0:Ny
+        for j = 0:Nz
+            if  C[pos2idx(i,j)] <= 0.1782/0.0315 && C[pos2idx(i,j)] >= 0.689655
+                phiCO2[pos2idx(i,j)] = (0.0261*C[pos2idx(i,j)] - 0.018)/0.129383
+            elseif C[pos2idx(i,j)] > 0.1782/0.0315 && C[pos2idx(i,j)] <= 29.67
+                phiCO2[pos2idx(i,j)] = (-0.0054*C[pos2idx(i,j)] + 0.1602)/0.129383
+            else
+                phiCO2[pos2idx(i,j)] = 0
+            end
+        end
+    end
+
     for i = 0:Ny
         for j = 0:Nz
             I_avg[pos2idx(i,j)] = sum(I_avg_vec[1:301,pos2idx(i,j)])
