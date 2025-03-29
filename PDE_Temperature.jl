@@ -1,5 +1,5 @@
 
-function HeatTransfer!(dX, T, params, t)
+function HeatTransfer!(dX, T, A, params, t)
     #Units for params can be found in LoadParameters.jl
 
     #Environmental Data
@@ -20,14 +20,14 @@ function HeatTransfer!(dX, T, params, t)
     Tamb = max.(((Tamb_Data[data_begin + t_hour1] * (t-t_hour1) + Tamb_Data[data_begin + t_hour2] * (t_hour2 - t))),0)
 
     #Water and Air Properties
-    rho_water = params.density_water(Tamb)
+    rho_water(T) = params.density_water(T)
     rho_air = params.density_air(Tamb)
-    dyn_visc_air = params.dynamic_viscosity_air(Tamb)
-    cp_water = params.specific_heat_capacity_water(Tamb)
+    dxn_visc_air = params.dynamic_viscosity_air(Tamb)
+    cp_water(T) = params.specific_heat_capacity_water(T)
     pr_air = params.prandtl_air(Tamb)
     P_a = params.saturated_vapor_pressure_water_air(Tamb)
-    k_water = params.thermal_conductivity_water(Tamb)
     k_air = params.thermal_conductivity_air(Tamb)
+    k_water(T) = params.thermal_conductivity_water(T)
     epsilon_water = params.emissivity_water
     epsilon_air = params.emissivity_air
     alpha_w = params.solar_reflectance_water
@@ -41,73 +41,42 @@ function HeatTransfer!(dX, T, params, t)
      L = params.reactor_length
      W = params.reactor_width
      H = params.reactor_initial_liquid_level
+     Nx = params.num_odes_x
      Ny = params.num_odes_y
-     Nz = params.num_odes_z
-     dy = L / Ny
+     dx = L / Nx
 
      #height and height increment as variables of distance across length of reactor
      Hght(x,S) = params.height(Tamb,S,RH,WNDSPD,P_a,x)
-     dz(x,S) = Hght(x,S)/Nz
+     dy(x,S) = Hght(x,S)/Ny
  
      #Reindexing of 2D position in reactor to be contained in 1D vector
-     pos2idx(y,z) = (y.+1) .+ z.*(Ny.+1)
-     idx2pos(pos) = [Integer(pos - 1 - (Ny+1) * floor( (pos-1) ./ (Ny.+1))), Integer(floor( (pos-1) ./ (Ny.+1)))]
+     pos2idx(y) = (y.+1)
+     idx2pos(pos) = [Integer(pos - 1 - (Nx+1) * floor( (pos-1) ./ (Nx.+1))), Integer(floor( (pos-1) ./ (Nx.+1)))]
  
      #Number of total elements in vector
-     Nelements = (Ny+1) * (Nz+1) #number of elements in vectors containing info in y and z-direction
-     Nelements1 = Ny + 1 #number of elements in vectors containing info in y-direction
+     Nelements = (Nx+1) #number of elements in vectors containing info in y and z-direction
    
      T = max.(T, 0.0) #don't allow negative values
      dT = zeros( Nelements, 1) #dT/dt
+     dA = zeros(Nelements)
  
      #Other parameters
      P_a = params.saturated_vapor_pressure_water_air(Tamb) 
-     M_Evap = params.evaporation_mass_flux(Tamb,WNDSPD,RH,P_a)
      sigma = params.stefan_boltzmann_constant
-     S(x) = params.salinity(Tamb,RH,WNDSPD,P_a,x)
      Re(H,T,V) = params.reynolds_number(H,T,V)
- 
-     #Vavg determined assuming conservation of kinetic energy (evaporated water has 0 kinetic energy)
-     M = zeros(Nelements1) #mass of water in vertical slice (kg)
-     Vavg = zeros(Nelements1) #average velocity
+     alpha = params.alpha
+     m = params.m
+     Vavg = zeros(Nelements) #average velocity
 
      #Initialize vectors for vertical increments, salinity, height
-     dz_v = zeros(Nelements1)
-     Sal = zeros(Nelements1)
-     Ht = zeros(Nelements1)
- 
-     #Initialize Mass and Avg Velocity
-     M[pos2idx(0,0)] = W*dy*H*rho_water
-     Vavg[pos2idx(0,0)] = params.volumetric_flow_rate_o/(W*H)
- 
-     for i in 1:Ny
-         M[pos2idx(i,0)] = M[pos2idx(i-1,0)] - dy*(1/Vavg[pos2idx(i-1,0)])*M_Evap*dy*W
-         Vavg[pos2idx(i,0)] = sqrt((M[pos2idx(i-1,0)]*(Vavg[pos2idx(i-1,0)])^2)/(M[pos2idx(i,0)]))
-     end
+     H = zeros(Nelements)
 
-    for i in 0:Ny
-        #salinity
-        Sal[pos2idx(i,0)] = S(i) #kg/m3
-        #height 
-        Ht[pos2idx(i,0)] = Hght(i,Vavg[pos2idx(i,0)]) #m
-        #increments in z direction
-        dz_v[pos2idx(i,0)] = dz(i,Vavg[pos2idx(i,0)]) #m
+    for i in 0:Nx
+        Vavg[pos2idx(i)] = alpha*A[pos2idx(i)]^(m-1)
+        H[pos2idx(i)] = A[pos2idx(i)]/(W)
     end
  
-     V_profile = zeros(Nelements, 1) #velocity profile (velocity at different points across vertical axis)
- 
-     for i in 0:Ny
-         for j in 0:Nz
- 
-                 #different velocity profiles under laminar and turbulent conditions
-                 if Re(Ht[pos2idx(0,0)],T[pos2idx(0,0)],Vavg[pos2idx(0,0)]) > 2000 #turbulent
-                     V_profile[pos2idx(i,j)] = Vavg[pos2idx(i,0)]
-                 else #laminar
-                     V_profile[pos2idx(i,j)] = params.velocity_profile_lam(Vavg[pos2idx(i,0)],j,Ht[pos2idx(i,0)])
-                 end
-          
-         end
-     end
+   
     
 
     #This function defines the heat flux from direct solar radiation
@@ -127,7 +96,7 @@ function HeatTransfer!(dX, T, params, t)
     #cooling effect due to that evaporation. Straight from Yadala and Cremaschi, 2016.
 
     #Calculate the Reynold's Number
-    kin_visc_a = dyn_visc_air / rho_air      # m^2/s
+    kin_visc_a = dxn_visc_air / rho_air      # m^2/s
     L_c = L #m, characteristic length
     Re_L = L_c * WNDSPD / kin_visc_a #Reynold's number (air over water)
 
@@ -155,42 +124,45 @@ function HeatTransfer!(dX, T, params, t)
     Q_sum2(Temp) = Q_Ground(Temp)
    
     #BC1: T(y,z) at y = 0 is constant [Tin]
-    #BC2: dT(y,z) at z = 0 includes the d2T/dy2, Vy*dT/dy, and Q terms (Qsol, Qrerad, Qlw, Qcov, Qevap)
-    #BC3: dT(y,z) at z = H includes the d2T/dy2, Vy*dT/dy, and Q terms (Qground)
+    #BC2: dT(y,z) at z = 0 includes the d2T/dx2, Vy*dT/dx, and Q terms (Qsol, Qrerad, Qlw, Qcov, Qevap)
+    #BC3: dT(y,z) at z = H includes the d2T/dx2, Vy*dT/dx, and Q terms (Qground)
 
     ##T(-1,j) = T(0,j)
-    ##T(Ny+1,j) = T(Ny,j)
+    ##T(Nx+1,j) = T(Nx,j)
 
 
-    for i = 1:Ny
-       
- 
-        # BC 2
-        dT[pos2idx(i, 0)] = (  (k_water*(T[pos2idx(i-1, 0)] - 2*T[pos2idx(i, 0)] + T[pos2idx(min(Ny,i+1), 0)]) / dy^2    #conduction in y-dir
-                             + Q_sum1(T[pos2idx(i,0)]) * dy * W)                                                        #heat generation at boundary
-                             - (V_profile[pos2idx(i,0)]*(T[pos2idx(i,0)] - T[pos2idx(i-1,0)])/dy)                                       #heat convection at boundary
-                             ) / (rho_water * cp_water)
+    T_conv = zeros(Nx+1)
+    T_str = zeros(Nx+1)
+    strip_Q = params.volumetric_flow_rate_strip
+    Term_adj = zeros(Nx+1)
+    Terms_flux = zeros(Nx+1)
+    Terms_conduction = zeros(Nx+1)
 
-        # BC 3
-        dT[pos2idx(i, Nz)] = (  (k_water*(T[pos2idx(i-1, Nz)] - 2*T[pos2idx(i, Nz)] + T[pos2idx(min(Ny,i+1), Nz)]) / dy^2 #conduction in y-dir
-                              + Q_sum2(T[pos2idx(i,Nz)]) * dy * W)                                                       #heat generation at boundary
-                              - (V_profile[pos2idx(i,Nz)]*(T[pos2idx(i,Nz)] - T[pos2idx(i-1,Nz)])/dy)                                       #heat convection at boundary
-                             ) / (rho_water*cp_water)
+    dT[pos2idx(0)] = 0 
+
+    q(Temp) = params.lat_flow(Temp,WNDSPD,RH,P_a)
+
+
+
+    for i=0:Nx
+        dA[pos2idx(i)] = q(T[pos2idx(i)]) -alpha*m*(((A[pos2idx(i)] + A[pos2idx(max(i-1,0))])/2)^(m-1))*(A[pos2idx(i)]-A[pos2idx(max(i-1,0))])/dx
     end
 
-    for j = 0:Nz
+    for i=1:Nx
+            T_conv[pos2idx(i)] = -(A[pos2idx(i)]*Vavg[pos2idx(i)]*T[pos2idx(i)] - A[pos2idx(i-1)]*Vavg[pos2idx(i-1)]*T[pos2idx(i-1)])/(A[pos2idx(i)]*dx) #K/hr
+            T_str[pos2idx(i)] = (strip_Q*params.input_temperature)/(A[pos2idx(i)]*L) #K/hr
+            Term_adj[pos2idx(i)] = -dA[pos2idx(i)]*T[pos2idx(i)]/(A[pos2idx(i)]) #K/hr
+            Terms_flux[pos2idx(i)] = (Q_sum1(T[pos2idx(i)])+Q_sum2(T[pos2idx(i)]))/(rho_water(T[pos2idx(i)])*cp_water(T[pos2idx(i)])*(H[pos2idx(i)]))
+            Terms_conduction[pos2idx(i)] = (k_water(T[pos2idx(i)]) * (T[pos2idx(i-1)] - 2*T[pos2idx(i)] + T[pos2idx(min(Nx,i+1))]) / dx^2)/(rho_water(T[pos2idx(i)])*cp_water(T[pos2idx(i)]))
 
-        dT[pos2idx(0, j)] = 0 
-
-    end
-
-    for i=1:Ny
-        for j=1:Nz-1
-            dT[pos2idx(i,j)] = (   (k_water * (T[pos2idx(i-1, j)] - 2*T[pos2idx(i, j)] + T[pos2idx(min(Ny,i+1), j)]) / dy^2      #conduction in y-dir
-                                 + k_water * (T[pos2idx(i, j-1)] - 2*T[pos2idx(i, j)] + T[pos2idx(i, j+1)]) / dz_v[pos2idx(i,0)]^2)     #conduction in z-dir
-                                 - (V_profile[pos2idx(i,j)]*(T[pos2idx(i,j)] - T[pos2idx(i-1,j)])/dy)                         #heat convection
-                               ) / (rho_water*cp_water)
-        end
+            dT[pos2idx(i)] = (( (k_water(T[pos2idx(i)]) * (T[pos2idx(i-1)] - 2*T[pos2idx(i)] + T[pos2idx(min(Nx,i+1))]) / dx^2) 
+                               ) / (rho_water(T[pos2idx(i)])*cp_water(T[pos2idx(i)]))#K/hr
+                               + Terms_flux[pos2idx(i)] #K/hr
+                               + T_str[pos2idx(i)] 
+                               + T_conv[pos2idx(i)]
+                               + Term_adj[pos2idx(i)])
+            
+                               
     end
 
     @views dX[Nelements+1:2*Nelements] .= dT        # order matters!  The @views operator takes a slice out of an array without making a copy.

@@ -21,24 +21,27 @@ module AlgaeRiverReactor
     include("PDE_AlgaeBiomass.jl")      # PDE_AlgaeBiomass!
     include("PDE_Temperature.jl")       # HeatTransfer!
     include("MakePlots.jl")             # Plot_Biomass_Profile, Plot_Temperature_Profile, etc.
-    include("PDE_CO2.jl")               #Carbon Flux
+    include("PDE_CO2.jl")               #Carbon Flux\
+    include("PDE_Flowrate.jl")          # Flowrate
    
     
 
 
     function Main_PDE!(dX, X, params, t)
+        Nx = params.num_odes_x
         Ny = params.num_odes_y
-        Nz = params.num_odes_z
-        Nelements = (Ny+1) * (Nz+1)
+        Nelements = (Nx+1)
 
         C_biomass = X[1:Nelements]
         Temperature = X[Nelements+1:2*Nelements]
         CO2 = X[2*Nelements+1:3*Nelements]
         DIC = X[3*Nelements+1:4*Nelements]
+        A =   X[4*Nelements+1:5*Nelements]
 
-        PDE_AlgaeBiomass!(dX, C_biomass, DIC, CO2, Temperature, params, t)      # changes dX
-        HeatTransfer!(dX, Temperature, params, t)          # changes dX
-        PDE_CO2!(dX, CO2, DIC, C_biomass, Temperature, params, t)            # changes dX
+        PDE_AlgaeBiomass!(dX, C_biomass, DIC, CO2, Temperature, A, params, t)      # changes dX
+        HeatTransfer!(dX, Temperature, A, params, t)          # changes dX
+        PDE_CO2!(dX, CO2, DIC, C_biomass, Temperature, A, params, t)            # changes dX
+        PDE_Flowrate!(dX, A, Temperature, params, t)
 
         #dX is changed directly by the above functions
         
@@ -55,30 +58,32 @@ module AlgaeRiverReactor
 
         Time_end = params.time_end
 
+        Nx = params.num_odes_x
         Ny = params.num_odes_y
-        Nz = params.num_odes_z
-        Nelements = (Ny+1) * (Nz+1)
-        pos2idx(y,z) = (y.+1) .+ z.*(Ny.+1)
-        idx2pos(pos) = [Integer(pos - 1 - (Ny+1) * floor( (pos-1) ./ (Ny.+1))), Integer(floor( (pos-1) ./ (Ny.+1)))]
+        Nelements = (Nx+1)
+        pos2idx(y) = (y.+1)
+        idx2pos(pos) = [Integer(pos - 1 - (Nx+1) * floor( (pos-1) ./ (Nx.+1))), Integer(floor( (pos-1) ./ (Nx.+1)))]
 
         C_biomass_in = params.input_biomass_concentration #g/L
         Temperature_in = params.input_temperature #K
         CO2_in = params.co2_init #g/m3
         DIC_in = params.DIC_init #umol/L, remember this excludes CO2
+        A_in = params.A_o
 
-        Nz = params.num_odes_z
         Ny = params.num_odes_y
+        Nx = params.num_odes_x
      
         #ICs: initial conditions at t = 0
-        C_biomass_o = zeros( (Ny+1) * (Nz+1), 1)
-        C_biomass_o[pos2idx(0,0:Nz)] .= C_biomass_in
-        Temperature_o = ones( (Ny+1) * (Nz+1), 1) .* Temperature_in
-        CO2_o = ones( (Ny+1) * (Nz+1), 1) .* 0.4401
-        CO2_o[pos2idx(0,1:Nz)] .= CO2_in
-        DIC_o = (ones( (Ny+1) * (Nz+1), 1) .* DIC_in)
+        C_biomass_o = ones( (Nx+1))*C_biomass_in
+        Temperature_o = ones( (Nx+1)) .* Temperature_in
+        CO2_o = ones((Nx+1)) .* CO2_in
+        CO2_o[pos2idx(0)] = CO2_in
+        DIC_o = (ones((Nx+1)) .* DIC_in)
+        A_o = ones(Nx+1)*A_in
+
         tspan = (0.0, Time_end)
 
-        Xo = [C_biomass_o; Temperature_o; CO2_o;DIC_o]
+        Xo = [C_biomass_o; Temperature_o; CO2_o;DIC_o;A_o]
         @show tspan
     
         prob = ODEProblem(Main_PDE!, Xo, tspan, params)
@@ -111,8 +116,17 @@ module AlgaeRiverReactor
             DIC_out[i,:] .= sol.u[i][3*Nelements+1:4*Nelements]
             
         end
+
+        A_out = zeros(TL, Nelements)
+
+        for i in 1:TL
+            A_out[i,:] .= sol.u[i][4*Nelements+1:5*Nelements]
+            
+        end
+
+        filesuffix = "v_v1"
         
-        return Plot_Biomass_Profile(Mout, CO2_out,DIC_out,Tout, T, params)
+        return Plot_Biomass_Profile(Mout, CO2_out,DIC_out,Tout, A_out,T, params, filesuffix)
 
     end
     export Run

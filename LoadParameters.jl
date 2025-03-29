@@ -10,8 +10,8 @@ break_on(:error)
 
 function LoadDefaultParameters(l, q)
     ## PDE Discretization
-    num_odes_y = 100
-    num_odes_z = 11
+    num_odes_x = 100
+    num_odes_y = 11
     time_end = 732       #hours
   
     ## Physical Constants
@@ -56,8 +56,13 @@ function LoadDefaultParameters(l, q)
     # CO2 Properties
     diffusion_coeff_co2_water(T) = (13.942E-09*((293/227.0) - 1)^1.7094)*3600              # m^2 / hr [equation fitted based on data in https://pubs.acs.org/doi/10.1021/je401008s]
     solubility_co2_water(T) = (0.00025989 .* (T .- 273.15).^2 .- 0.03372247 .* (T .- 273.15) .+ 1.31249383) ./ 1000.0  #mole fraction of dissolved CO2 in water at equilibrium [equation fitted based on data from https://srd.nist.gov/JPCRD/jpcrd427.pdf]
-    co2_init = 0.4401 #g/m3
+    co2_init = 0.1782/0.0315 #g/m3
     DIC_init = 2002 #uM
+    Schmidt(T) = (dynamic_viscosity_water(T)/density_water(T))/(diffusion_coeff_co2_water(T)) #unitless
+    molar_mass_co2 = 44.01 #g/mol
+    henry_co2(T) = 0.034*exp(2400*((1/T) - 1/298.15))*(molar_mass_co2)*(1000/100000) #g Co2/m3-Pa
+    PpCO2 = 0.0004*reference_pressure #Pa
+    C_CO2_star(T) = PpCO2*henry_co2(T) #g/m3 Co2
 
     # Construction Material Properties
     thermal_diffusivity_concrete = 1011.83E0-9                                  #
@@ -84,11 +89,12 @@ function LoadDefaultParameters(l, q)
 
     ## River Reactor Geometric Properties
 
-    lengths = [200,200,200,200,200,200,200,200]                           # meters
-    reactor_length = 200
+    lengths = [6000]                           # meters
+    reactor_length = 6000                      #length of reactor slope
     real_length = lengths[q]
     reactor_width =  0.5                               # meters
     reactor_initial_liquid_level = 0.15             # meters, this is the sluice gate inlet height
+    channel_slope = 0.000125 # m height/m length (in distance across ground)
 
     #Evaporation Equations
 
@@ -100,47 +106,37 @@ function LoadDefaultParameters(l, q)
     ## above equations obtained from https://www.engineeringtoolbox.com/evaporation-water-surface-d_690.html 
 
     #Flow and Velocity Profiles
-    flow_rates = [5,10,15,20,25,30,35,40] #m3/hr
+    flow_rates = [2.5] #m3/hr
     volumetric_flow_rate_o = flow_rates[l] #m^3/hr
-    volumetric_flow_rate_strip = volumetric_flow_rate_o/20 #m3/hr
-    strip_position = [0,5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100] #20 dispersed columns
-    s_conc = [30,60,90,120,150,180,210,240] #g/m3 co2
+    volumetric_flow_rate_strip = volumetric_flow_rate_o #m3/hr
+    n_mann = 0.018 #Manning's coefficient for Earth, smooth
+    alpha = 3600*(1/n_mann)*sqrt(channel_slope)*reactor_width^(-2/3) #component of Manning's eq, converts cross sectional area to vol flr
+    m = 5/3 #factor for rectangular open channels
+    A_o = (volumetric_flow_rate_o/alpha)^(1/m) #initial cross-sectional area
+    H_o = A_o/reactor_width
+    @show H_o
+    s_conc = [500] #g/m3 co2, absorption column concentration
     strip_concentration = s_conc[q] #g/m3, saturated
+
+    lat_flow(T,W,R_H,P) = (volumetric_flow_rate_strip/real_length #lateral inflow per unit length, #m3/hr-m 
+    + evaporation_mass_flux(T,W,R_H,P)*reactor_width*(1/density_water(T))  #lateral outflow per unit, #m3/hr-m
+    )
+
     
-    volumetric_flow_rate(T,W,R_H,P,x) = (max((volumetric_flow_rate_o -evaporation_mass_flux(T,W,R_H,P)*(reactor_width/density_water(T))*x*(reactor_length/num_odes_y)),0) 
-    + volumetric_flow_rate_strip*(max(x-(strip_position[1]-1),0)/max(abs(x-(strip_position[1]-1)),1))
-    + volumetric_flow_rate_strip*(max(x-(strip_position[2]-1),0)/max(abs(x-(strip_position[2]-1)),1))
-    + volumetric_flow_rate_strip*(max(x-(strip_position[3]-1),0)/max(abs(x-(strip_position[3]-1)),1))
-    + volumetric_flow_rate_strip*(max(x-(strip_position[4]-1),0)/max(abs(x-(strip_position[4]-1)),1))
-    + volumetric_flow_rate_strip*(max(x-(strip_position[5]-1),0)/max(abs(x-(strip_position[5]-1)),1))
-    + volumetric_flow_rate_strip*(max(x-(strip_position[6]-1),0)/max(abs(x-(strip_position[6]-1)),1))
-    + volumetric_flow_rate_strip*(max(x-(strip_position[7]-1),0)/max(abs(x-(strip_position[7]-1)),1))
-    + volumetric_flow_rate_strip*(max(x-(strip_position[8]-1),0)/max(abs(x-(strip_position[8]-1)),1))
-    + volumetric_flow_rate_strip*(max(x-(strip_position[9]-1),0)/max(abs(x-(strip_position[9]-1)),1))
-    + volumetric_flow_rate_strip*(max(x-(strip_position[10]-1),0)/max(abs(x-(strip_position[10]-1)),1))
-    + volumetric_flow_rate_strip*(max(x-(strip_position[11]-1),0)/max(abs(x-(strip_position[11]-1)),1))
-    + volumetric_flow_rate_strip*(max(x-(strip_position[12]-1),0)/max(abs(x-(strip_position[12]-1)),1))
-    + volumetric_flow_rate_strip*(max(x-(strip_position[13]-1),0)/max(abs(x-(strip_position[13]-1)),1))
-    + volumetric_flow_rate_strip*(max(x-(strip_position[14]-1),0)/max(abs(x-(strip_position[14]-1)),1))
-    + volumetric_flow_rate_strip*(max(x-(strip_position[15]-1),0)/max(abs(x-(strip_position[15]-1)),1))
-    + volumetric_flow_rate_strip*(max(x-(strip_position[16]-1),0)/max(abs(x-(strip_position[16]-1)),1))
-    + volumetric_flow_rate_strip*(max(x-(strip_position[17]-1),0)/max(abs(x-(strip_position[17]-1)),1))
-    + volumetric_flow_rate_strip*(max(x-(strip_position[18]-1),0)/max(abs(x-(strip_position[18]-1)),1))
-    + volumetric_flow_rate_strip*(max(x-(strip_position[19]-1),0)/max(abs(x-(strip_position[19]-1)),1))
-    + volumetric_flow_rate_strip*(max(x-(strip_position[20]-1),0)/max(abs(x-(strip_position[20]-1)),1))
+    volumetric_flow_rate(T,W,R_H,P,x) = (max((volumetric_flow_rate_o -evaporation_mass_flux(T,W,R_H,P)*(reactor_width/density_water(T))*x*(reactor_length/num_odes_x)),0) 
+    + volumetric_flow_rate_strip*(x/num_odes_x)
     )
 
     height(T,S,R_H,W,P,x) = volumetric_flow_rate(T,W,R_H,P,x)/(S*reactor_width)
-    term(V,H) = V/((2/3)*H^2)
-    velocity_profile_lam(V,y,H) = term(V,H)*((H-y*(H/num_odes_z))*H + 0.5*(H-y*(H/num_odes_z))^2)
+    
     hydraulic_diameter(H) = 4 * (reactor_width * H) / (reactor_width + 2 * H) #m
     reynolds_number(H,T,V) = V .* density_water(T) .* hydraulic_diameter(H) ./ (dynamic_viscosity_water(T))
     
 
     ## Biomass Properties
-    input_biomass_concentration = 1000.0 / 1000.0         # kg/m^3
+    input_biomass_concentration = 2390 / 1000.0         # kg/m^3
     max_biomass_specific_growth_rate = 7.9/24   # 1 / hour (obtained from Krishnan at T_opt, 35 salinity)
-    co2_per_biomass = 1.88   #kg CO2/kg algae
+    co2_per_biomass = 1.83   #kg CO2/kg algae https://ncesr.unl.edu/wordpress/wp-content/uploads/2013/08/Microalgal-Biomass-Production-and-Carbon-Dioxide-Sequestration.pdf
     biomass_diffusion_coefficient_y = 1.0e-9 * 3600.0           #m^2/hour
     biomass_diffusion_coefficient_z = 1.0e-9 * 3600.0           #m^2/hour
 
@@ -184,10 +180,10 @@ function LoadDefaultParameters(l, q)
 
     ## Salinity Properties
     salinity_in = 35 #g/kg sw
-    salinity(T,R_H,W,P,x) = (salinity_in*volumetric_flow_rate_o)/(volumetric_flow_rate(T,W,R_H,P,x)) #kg salt in a section/kg sw
+    salinity(Area) = (salinity_in*A_o)/(Area) #kg salt in a section/kg sw
 
-    params = (; num_odes_y,
-                num_odes_z,
+    params = (; num_odes_x,
+                num_odes_y,
                 time_end,
                 reference_pressure,
                 stefan_boltzmann_constant,
@@ -226,7 +222,6 @@ function LoadDefaultParameters(l, q)
                 flow_rates,
                 volumetric_flow_rate,
                 height,
-                velocity_profile_lam,
                 hydraulic_diameter,
                 reynolds_number,
                 input_temperature,
@@ -247,12 +242,18 @@ function LoadDefaultParameters(l, q)
                 co2_init,
                 salinity,
                 volumetric_flow_rate_o,
-                strip_position,
                 volumetric_flow_rate_strip,
+                n_mann,
+                alpha,
+                m,
+                A_o,
                 strip_concentration,
+                lat_flow,
                 real_length,
                 s_conc,
-                pH_init
+                pH_init,
+                Schmidt, 
+                C_CO2_star
                 )
 
 
