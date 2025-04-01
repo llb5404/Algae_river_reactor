@@ -39,9 +39,9 @@ module AlgaeRiverReactor
         A =   X[4*Nelements+1:5*Nelements]
 
         PDE_AlgaeBiomass!(dX, C_biomass, DIC, CO2, Temperature, A, params, t)      # changes dX
-        HeatTransfer!(dX, Temperature, A, params, t)          # changes dX
+        HeatTransfer!(dX, Temperature, A, C_biomass, params, t)          # changes dX
         PDE_CO2!(dX, CO2, DIC, C_biomass, Temperature, A, params, t)            # changes dX
-        PDE_Flowrate!(dX, A, Temperature, params, t)
+        PDE_Flowrate!(dX, A, C_biomass,Temperature, params, t)
 
         #dX is changed directly by the above functions
         

@@ -125,20 +125,12 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, A, params, t)
     R_co2 = zeros(Nelements,1)
     for i in 0:Nx
             mu_v[pos2idx(i)] = phiCO2[pos2idx(i)]*phiL[pos2idx(i)]*mu(Temperature[pos2idx(i)],Sal[pos2idx(i)]) -0.003621 
-            R_co2[pos2idx(i)] = co2_per_biomass * mu_v[pos2idx(i)] * ((C_biomass[pos2idx(i)])*1000) #g/m3/hr (when algae die, they release CO2)
+            R_co2[pos2idx(i)] = max(co2_per_biomass * mu_v[pos2idx(i)] * ((C_biomass[pos2idx(i)])*1000),0) #g/m3/hr (when algae die, they release CO2)
     end
 
-    k = zeros(Nelements,1) #gas transfer velocity (m/hr)
-    Sc(T) = params.Schmidt(T)
+    
     CO2_star(T) = params.C_CO2_star(T)
-
-    for j = 0:Nx
-        if WNDSPD <= 3.6
-            k[pos2idx(j)] = 3600*(0.17*WNDSPD)*(600/Sc(Temperature[pos2idx(j)]))^0.66
-        else
-            k[pos2idx(j)] = 3600*((2.85*WNDSPD) - 9.65)*(600/Sc(Temperature[pos2idx(j)]))^0.66
-        end
-    end
+    k_co2(T) = params.k_co2(WNDSPD,T)
 
     # ==========  DISSOLVED CARBON DIOXIDE BALANCE ========
     # C is dissolved CO2 [kg CO2 / m^3 water ]
@@ -150,10 +142,11 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, A, params, t)
 
     C[pos2idx(0)] =  C_o
    
-    strip_Q = params.volumetric_flow_rate_strip #m3/hr
+    strip_Q(phiL) = params.volumetric_flow_rate_strip(phiL) #m3/hr
     strip_C = params.strip_concentration #g/m3
-    q(Temp) = params.lat_flow(Temp,WNDSPD,RH,P_a)
+    q(Temp,phiL) = params.lat_flow(Temp,WNDSPD,RH,P_a,phiL)
 
+    S_conc_new = zeros(Nelements)
     CO2_uptake = zeros(Nelements)
     CO2_str = zeros(Nelements)
     CO2_conv = zeros(Nelements)
@@ -161,16 +154,19 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, A, params, t)
     CO2_flux = zeros(Nelements)
 
     for i=0:Nx
-        dA[pos2idx(i)] = q(Temperature[pos2idx(i)]) -alpha*m*(((A[pos2idx(i)] + A[pos2idx(max(i-1,0))])/2)^(m-1))*(A[pos2idx(i)]-A[pos2idx(max(i-1,0))])/dx
+        dA[pos2idx(i)] = q(Temperature[pos2idx(i)],I_avg[pos2idx(i)]) -alpha*m*(((A[pos2idx(i)] + A[pos2idx(max(i-1,0))])/2)^(m-1))*(A[pos2idx(i)]-A[pos2idx(max(i-1,0))])/dx
     end
  
+    beta = 100
+
     for i=1:Nx
 
             CO2_uptake[pos2idx(i)] = -R_co2[pos2idx(i)]
-            CO2_str[pos2idx(i)] = (strip_Q*strip_C)/(A[pos2idx(i)]*L)
             CO2_conv[pos2idx(i)] = -(A[pos2idx(i)]*Vavg[pos2idx(i)]*C[pos2idx(i)] - A[pos2idx(i-1)]*Vavg[pos2idx(i-1)]*C[pos2idx(i-1)])/(A[pos2idx(i)]*dx)
             Term_adj[pos2idx(i)] = -dA[pos2idx(i)]*C[pos2idx(i)]/A[pos2idx(i)]
-            CO2_flux[pos2idx(i)] = k[pos2idx(i)]*(CO2_star(Temperature[pos2idx(i)]) - C[pos2idx(i)])/H[pos2idx(i)]
+            CO2_flux[pos2idx(i)] = k_co2(Temperature[pos2idx(i)])*(CO2_star(Temperature[pos2idx(i)]) - C[pos2idx(i)])/H[pos2idx(i)]
+            S_conc_new[pos2idx(i)] = 1500
+            CO2_str[pos2idx(i)] = (strip_Q(I_avg[pos2idx(i)])*S_conc_new[pos2idx(i)])/(A[pos2idx(i)]*L)
         
             dCO2[pos2idx(i)]=  (+ CO2_uptake[pos2idx(i)]
                                    + CO2_str[pos2idx(i)]
@@ -179,7 +175,6 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, A, params, t)
                                    + CO2_flux[pos2idx(i)])
     end
     
-
     #change in total dissolved carbon (umol) equal to change of CO2
     
     mw_co2 = 44.01 #g/mol
@@ -203,8 +198,8 @@ function PDE_CO2!(dX, C, DIC, C_biomass, Temperature, A, params, t)
       
     end
    
-    @views dX[1+2*Nelements:3*Nelements] .= 0 #dCO2        # order matters! The @views operator takes a slice out of an array without making a copy.
-    @views dX[1+3*Nelements:4*Nelements] .= 0 #dDIC
+    @views dX[1+2*Nelements:3*Nelements] .= dCO2        # order matters! The @views operator takes a slice out of an array without making a copy.
+    @views dX[1+3*Nelements:4*Nelements] .= dDIC
     nothing
 end
 

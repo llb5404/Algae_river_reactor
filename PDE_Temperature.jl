@@ -1,5 +1,5 @@
 
-function HeatTransfer!(dX, T, A, params, t)
+function HeatTransfer!(dX, T, A, C_biomass,params, t)
     #Units for params can be found in LoadParameters.jl
 
     #Environmental Data
@@ -122,6 +122,35 @@ function HeatTransfer!(dX, T, A, params, t)
 
     Q_sum1(Temp) = Q_Longwave_Atmo + Q_Rerad(Temp) + Q_Conv(Temp) + Q_Evap(Temp) + Q_Solar
     Q_sum2(Temp) = Q_Ground(Temp)
+
+          #Calculation of light adjustment factor for biomass growth
+          wavelength = zeros(301,1)
+          absorbance = zeros(301,1)
+          percent_light = zeros(301,1)
+          
+          csv_reader1 = CSV.File("WAVE_ABS.csv", header=["col1", "col2","col3"])
+          for (i,row) in enumerate(csv_reader1)
+              wavelength[i] = convert(Float64, row.col1) #wavelength of light, nm 400-700
+              absorbance[i] = convert(Float64, row.col2) #absorbance of wavelength of light by P celeri, m2/mol
+              percent_light[i] = convert(Float64,row.col3) #percentage of sunlight in each wavelength
+          end
+      
+          watt_to_umolm2s = 0.425*4.6 #watt to umolm2s conversion
+      
+          #average light intensity for each wavelength
+          I_avg_vec = zeros(301,Nelements)
+          I_avg = zeros(Nelements)
+      
+          for i = 1:301
+              for j = 0:Nx
+                  I_avg_vec[i,pos2idx(j)] = GHI*watt_to_umolm2s*percent_light[i]*exp(-absorbance[i]*(C_biomass[pos2idx(j)])*H[pos2idx(j)]/2) 
+              end
+          end
+      
+          for i = 0:Nx
+                  I_avg[pos2idx(i)] = sum(I_avg_vec[1:301,pos2idx(i)])
+          end
+      
    
     #BC1: T(y,z) at y = 0 is constant [Tin]
     #BC2: dT(y,z) at z = 0 includes the d2T/dx2, Vy*dT/dx, and Q terms (Qsol, Qrerad, Qlw, Qcov, Qevap)
@@ -133,24 +162,24 @@ function HeatTransfer!(dX, T, A, params, t)
 
     T_conv = zeros(Nx+1)
     T_str = zeros(Nx+1)
-    strip_Q = params.volumetric_flow_rate_strip
+    strip_Q(phiL) = params.volumetric_flow_rate_strip(phiL)
     Term_adj = zeros(Nx+1)
     Terms_flux = zeros(Nx+1)
     Terms_conduction = zeros(Nx+1)
 
     dT[pos2idx(0)] = 0 
 
-    q(Temp) = params.lat_flow(Temp,WNDSPD,RH,P_a)
+    q(Temp,phiL) = params.lat_flow(Temp,WNDSPD,RH,P_a,phiL)
 
 
 
     for i=0:Nx
-        dA[pos2idx(i)] = q(T[pos2idx(i)]) -alpha*m*(((A[pos2idx(i)] + A[pos2idx(max(i-1,0))])/2)^(m-1))*(A[pos2idx(i)]-A[pos2idx(max(i-1,0))])/dx
+        dA[pos2idx(i)] = q(T[pos2idx(i)],I_avg[pos2idx(i)]) -alpha*m*(((A[pos2idx(i)] + A[pos2idx(max(i-1,0))])/2)^(m-1))*(A[pos2idx(i)]-A[pos2idx(max(i-1,0))])/dx
     end
 
     for i=1:Nx
             T_conv[pos2idx(i)] = -(A[pos2idx(i)]*Vavg[pos2idx(i)]*T[pos2idx(i)] - A[pos2idx(i-1)]*Vavg[pos2idx(i-1)]*T[pos2idx(i-1)])/(A[pos2idx(i)]*dx) #K/hr
-            T_str[pos2idx(i)] = (strip_Q*params.input_temperature)/(A[pos2idx(i)]*L) #K/hr
+            T_str[pos2idx(i)] = (strip_Q(I_avg[pos2idx(i)])*params.input_temperature)/(A[pos2idx(i)]*L) #K/hr
             Term_adj[pos2idx(i)] = -dA[pos2idx(i)]*T[pos2idx(i)]/(A[pos2idx(i)]) #K/hr
             Terms_flux[pos2idx(i)] = (Q_sum1(T[pos2idx(i)])+Q_sum2(T[pos2idx(i)]))/(rho_water(T[pos2idx(i)])*cp_water(T[pos2idx(i)])*(H[pos2idx(i)]))
             Terms_conduction[pos2idx(i)] = (k_water(T[pos2idx(i)]) * (T[pos2idx(i-1)] - 2*T[pos2idx(i)] + T[pos2idx(min(Nx,i+1))]) / dx^2)/(rho_water(T[pos2idx(i)])*cp_water(T[pos2idx(i)]))

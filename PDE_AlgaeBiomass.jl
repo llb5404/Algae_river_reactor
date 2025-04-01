@@ -137,10 +137,10 @@ function PDE_AlgaeBiomass!(dX, C, DIC,CO2,Temperature,A, params, t)
     #BC1: C(y,z) at y = 0 is constant [Cin]
     dC[pos2idx(0)] = 0.0
 
-    q(Temp) = params.lat_flow(Temp,WNDSPD,RH,P_a)
+    q(Temp,phiL) = params.lat_flow(Temp,WNDSPD,RH,P_a,phiL)
 
     for i=0:Nx
-        dA[pos2idx(i)] = q(Temperature[pos2idx(i)]) -alpha*m*(((A[pos2idx(i)] + A[pos2idx(max(i-1,0))])/2)^(m-1))*(A[pos2idx(i)]-A[pos2idx(max(i-1,0))])/dx
+        dA[pos2idx(i)] = q(Temperature[pos2idx(i)],I_avg[pos2idx(i)]) -alpha*m*(((A[pos2idx(i)] + A[pos2idx(max(i-1,0))])/2)^(m-1))*(A[pos2idx(i)]-A[pos2idx(max(i-1,0))])/dx
     end
 
     BM_growth = zeros(Nelements)

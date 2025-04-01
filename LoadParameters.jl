@@ -10,7 +10,7 @@ break_on(:error)
 
 function LoadDefaultParameters(l, q)
     ## PDE Discretization
-    num_odes_x = 100
+    num_odes_x = 25
     num_odes_y = 11
     time_end = 732       #hours
   
@@ -59,6 +59,7 @@ function LoadDefaultParameters(l, q)
     co2_init = 0.1782/0.0315 #g/m3
     DIC_init = 2002 #uM
     Schmidt(T) = (dynamic_viscosity_water(T)/density_water(T))/(diffusion_coeff_co2_water(T)) #unitless
+    k_co2(WNDSPD,T) = (1/100)*(-0.35 + 1.10*WNDSPD^1.46)*(660/Schmidt(T))^0.5 #cm/hr
     molar_mass_co2 = 44.01 #g/mol
     henry_co2(T) = 0.034*exp(2400*((1/T) - 1/298.15))*(molar_mass_co2)*(1000/100000) #g Co2/m3-Pa
     PpCO2 = 0.0004*reference_pressure #Pa
@@ -89,8 +90,8 @@ function LoadDefaultParameters(l, q)
 
     ## River Reactor Geometric Properties
 
-    lengths = [6000]                           # meters
-    reactor_length = 6000                      #length of reactor slope
+    lengths = [10000]                           # meters
+    reactor_length = 10000                      #length of reactor slope
     real_length = lengths[q]
     reactor_width =  0.5                               # meters
     reactor_initial_liquid_level = 0.15             # meters, this is the sluice gate inlet height
@@ -108,7 +109,7 @@ function LoadDefaultParameters(l, q)
     #Flow and Velocity Profiles
     flow_rates = [2.5] #m3/hr
     volumetric_flow_rate_o = flow_rates[l] #m^3/hr
-    volumetric_flow_rate_strip = volumetric_flow_rate_o #m3/hr
+    volumetric_flow_rate_strip(phiL) = 10*volumetric_flow_rate_o*(phiL/750) #m3/hr
     n_mann = 0.018 #Manning's coefficient for Earth, smooth
     alpha = 3600*(1/n_mann)*sqrt(channel_slope)*reactor_width^(-2/3) #component of Manning's eq, converts cross sectional area to vol flr
     m = 5/3 #factor for rectangular open channels
@@ -118,23 +119,16 @@ function LoadDefaultParameters(l, q)
     s_conc = [500] #g/m3 co2, absorption column concentration
     strip_concentration = s_conc[q] #g/m3, saturated
 
-    lat_flow(T,W,R_H,P) = (volumetric_flow_rate_strip/real_length #lateral inflow per unit length, #m3/hr-m 
+    lat_flow(T,W,R_H,P,phiL) = (volumetric_flow_rate_strip(phiL)/real_length #lateral inflow per unit length, #m3/hr-m 
     + evaporation_mass_flux(T,W,R_H,P)*reactor_width*(1/density_water(T))  #lateral outflow per unit, #m3/hr-m
     )
-
-    
-    volumetric_flow_rate(T,W,R_H,P,x) = (max((volumetric_flow_rate_o -evaporation_mass_flux(T,W,R_H,P)*(reactor_width/density_water(T))*x*(reactor_length/num_odes_x)),0) 
-    + volumetric_flow_rate_strip*(x/num_odes_x)
-    )
-
-    height(T,S,R_H,W,P,x) = volumetric_flow_rate(T,W,R_H,P,x)/(S*reactor_width)
     
     hydraulic_diameter(H) = 4 * (reactor_width * H) / (reactor_width + 2 * H) #m
     reynolds_number(H,T,V) = V .* density_water(T) .* hydraulic_diameter(H) ./ (dynamic_viscosity_water(T))
     
 
     ## Biomass Properties
-    input_biomass_concentration = 2390 / 1000.0         # kg/m^3
+    input_biomass_concentration = 3000 / 1000.0         # kg/m^3
     max_biomass_specific_growth_rate = 7.9/24   # 1 / hour (obtained from Krishnan at T_opt, 35 salinity)
     co2_per_biomass = 1.83   #kg CO2/kg algae https://ncesr.unl.edu/wordpress/wp-content/uploads/2013/08/Microalgal-Biomass-Production-and-Carbon-Dioxide-Sequestration.pdf
     biomass_diffusion_coefficient_y = 1.0e-9 * 3600.0           #m^2/hour
@@ -220,8 +214,6 @@ function LoadDefaultParameters(l, q)
                 surface_humidity_ratio,
                 evaporation_mass_flux,
                 flow_rates,
-                volumetric_flow_rate,
-                height,
                 hydraulic_diameter,
                 reynolds_number,
                 input_temperature,
@@ -253,7 +245,8 @@ function LoadDefaultParameters(l, q)
                 s_conc,
                 pH_init,
                 Schmidt, 
-                C_CO2_star
+                C_CO2_star,
+                k_co2,
                 )
 
 

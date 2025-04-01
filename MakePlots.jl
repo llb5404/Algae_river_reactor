@@ -206,12 +206,23 @@ function Plot_Biomass_Profile(Mout, CO2_out, DIC_out,Tout, A_out, T, params, fil
     #Adjusted biomass concentration and specific growth rate
     mu = zeros(TL,Nx_new+1)
     mu_out = zeros(TL)
+    CO2_star(T) = params.C_CO2_star(T)
+    k_co2(WNDSPD,T) = params.k_co2(WNDSPD,T)
+
+    CO2_uptake = zeros(TL, Nelements)
+    CO2_flux = zeros(TL, Nelements)
+
     for i = 1:TL
-        for j = 0:Nx
+        for j = 1:Nx
             mu[i,pos2idx(j)] = params.biomass_specific_growth_rate(Tout[i,pos2idx(j)], Sout[i,pos2idx(j)])*phiL[i,pos2idx(j)]*phiCO2[i,pos2idx(j)]-0.003621
             mu_out[i] = mu[i,pos2idx(Nx_new)]
+
+            CO2_uptake[i, pos2idx(j)] = -params.co2_per_biomass * mu[i,pos2idx(j)] * ((Mout[i,pos2idx(j)])*1000)
+            CO2_flux[i, pos2idx(j)] = k_co2(WNDSPDout[i],Tout[i,pos2idx(j)])*(CO2_star(Tout[i,pos2idx(j)]) - CO2_out[i,pos2idx(j)])/Ht[i,pos2idx(j)]
         end
     end
+
+    
 
 
     #Function averages across vertical slice (from just below surface)
@@ -280,6 +291,8 @@ function Plot_Biomass_Profile(Mout, CO2_out, DIC_out,Tout, A_out, T, params, fil
             muout2D[j+1,i+1] = Statistics.mean(mu[max(1,TL-100):TL, pos2idx(i)])
         end
     end
+
+    
 
 
     Y = LinRange(0,dx*Nx_new,Nx_new+1)
@@ -364,5 +377,10 @@ function Plot_Biomass_Profile(Mout, CO2_out, DIC_out,Tout, A_out, T, params, fil
     p1 = plot(T[1:TL],Tout[1:TL, pos2idx(Nx_new)], xlabel = "Time [hr]", ylabel = "Temperature at Outlet (K)", title="Outlet Temp", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
     png("Tempout_Time_AlgaeRiverReactor_$filesuffix")
     savefig(p1, "Tempout_Time_AlgaeRiverReactor_$filesuffix.ps")
+
+
+    p4 = plot(T[1:TL],Prod_vec[1:TL], xlabel = "Time [hr]", ylabel = "Abs Column CO2 Conc (g/m3)", title="Abs Column CO2 Conc Change over Length", plot_titlefontsize=8, labelfontsize=7,tickfontsize=6, grid = false)
+    png("Prod_Time_AlgaeRiverReactor_$filesuffix")
+    savefig(p4, "Prod_Time_AlgaeRiverReactor_$filesuffix.ps")
     return Average_Continuous_Productivity, Average_DIC, Outlet_Height, Avg_BM_out, Average_Spec_Growth, Cum_Evap_Loss, Average_RT, Average_CO2_Uptake
 end

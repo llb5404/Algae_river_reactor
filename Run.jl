@@ -61,7 +61,6 @@ for l = 1:1
     
     vol_fl_v[l,1] = params.flow_rates[l]
     len_v[l,1] = params.lengths[1]
-    co2_vec[l,1] = params.volumetric_flow_rate_strip
     strip_conc[l,1] = params.s_conc[idx_q]/1000
 
     @show productivity_v
